@@ -48,3 +48,13 @@ def test_nvidia_two_of_four_kept_per_group() -> None:
     assert torch.count_nonzero(weight[1, 4:]).item() == 2
     assert weight[0].tolist() == [0.0, 0.0, 3.0, 4.0, 4.0, 3.0, 0.0, 0.0]
 
+
+def test_nvidia_skips_layers_not_divisible_by_group_size() -> None:
+    model = nn.Sequential(nn.Linear(6, 1, bias=False))
+    with torch.no_grad():
+        model[0].weight.copy_(torch.tensor([[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]]))
+
+    masks = nvidia_nm_prune_model(model, keep_n=2, group_m=4)
+
+    assert masks == {}
+    assert model[0].weight.tolist() == [[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]]

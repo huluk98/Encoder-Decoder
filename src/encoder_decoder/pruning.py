@@ -190,21 +190,21 @@ def nvidia_nm_prune_model(
         if weight.dim() != 2:
             continue
         rows, cols = weight.shape
-        usable_cols = cols - (cols % group_m)
+        if cols % group_m != 0:
+            continue
         mask = torch.ones_like(weight, dtype=torch.bool, device=weight.device)
-        if usable_cols:
-            grouped_scores = weight[:, :usable_cols].abs().reshape(rows, -1, group_m)
-            group_mask = torch.ones_like(grouped_scores, dtype=torch.bool)
-            prune_count = group_m - keep_n
-            prune_idx = torch.topk(
-                grouped_scores,
-                prune_count,
-                dim=2,
-                largest=False,
-                sorted=False,
-            ).indices
-            group_mask.scatter_(2, prune_idx, False)
-            mask[:, :usable_cols] = group_mask.reshape(rows, usable_cols)
+        grouped_scores = weight.abs().reshape(rows, -1, group_m)
+        group_mask = torch.ones_like(grouped_scores, dtype=torch.bool)
+        prune_count = group_m - keep_n
+        prune_idx = torch.topk(
+            grouped_scores,
+            prune_count,
+            dim=2,
+            largest=False,
+            sorted=False,
+        ).indices
+        group_mask.scatter_(2, prune_idx, False)
+        mask = group_mask.reshape_as(weight)
         with torch.no_grad():
             module.weight.mul_(mask.to(dtype=module.weight.dtype))
         masks[name] = mask.detach().cpu()

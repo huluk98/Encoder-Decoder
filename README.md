@@ -125,6 +125,8 @@ encdec-prune \
 
 Every pruning run saves the pruned model, tokenizer, and `pruning_report.json` in the output directory. By default, linear layers are pruned and `lm_head` is skipped. Add `--include_lm_head` if you want to prune it too.
 
+The NVIDIA method follows the usual 2:4 constraint strictly: a linear layer is pruned only when its input dimension is divisible by the group size. Non-divisible layers are skipped instead of leaving a partial dense remainder.
+
 ## Local Scripts
 
 The package commands are also available as direct scripts:
@@ -141,4 +143,3 @@ python scripts/prune.py --help
 python -m compileall src scripts tests
 pytest
 ```
-
