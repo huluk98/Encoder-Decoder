@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "encoder-decoder-sft-pruning"
+version = "0.1.0"
+description = "SFT, exact-match evaluation, and vanilla pruning utilities for decoder-only and encoder-decoder language models."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "accelerate>=0.29",
+  "datasets>=2.19",
+  "numpy>=1.24",
+  "torch>=2.1",
+  "tqdm>=4.66",
+  "transformers>=4.41",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "ruff>=0.4",
+]
+
+[project.scripts]
+encdec-sft = "encoder_decoder.sft:main"
+encdec-eval-exact = "encoder_decoder.evaluate_exact:main"
+encdec-prune = "encoder_decoder.pruning:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
