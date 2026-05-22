@@ -10,11 +10,24 @@ It supports both decoder-only checkpoints such as `charent/chatLM-mini-Chinese` 
 
 ## Setup
 
+Conda GPU environment:
+
+```bash
+conda env create -f environment.yml
+conda activate encoder-decoder-prune
+pip install -e ".[dev]"
+```
+
+Lightweight virtual environment:
+
 ```bash
 python -m venv .venv
 source .venv/bin/activate
+python -m pip install --upgrade pip
 pip install -e ".[dev]"
 ```
+
+See [docs/decoder_only_pruning_prompt.md](docs/decoder_only_pruning_prompt.md) for a copy-paste prompt that describes the expected decoder-only 50% pruning behavior against the CMC scripts.
 
 ## Data Format
 
