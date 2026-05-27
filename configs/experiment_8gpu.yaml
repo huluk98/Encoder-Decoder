@@ -1,0 +1,82 @@
+# One-file 8-GPU experiment config.
+# Edit paths here, then run:
+#   python scripts/run_8gpu_full_suite.py --config configs/experiment_8gpu.yaml
+
+model:
+  name_or_path: charent/ChatLM-mini-Chinese
+  family: seq2seq
+  precision: bf16   # bf16, fp16, fp32, or auto
+  trust_remote_code: true
+
+paths:
+  output_root: runs/chatlm-mini-full-8gpu-suite
+
+  # Regular SFT prompt/response data.
+  sft_train: data/sft.jsonl
+  sft_eval: data/eval.jsonl
+
+  # Contrastive triplet data.
+  contrastive_train: "/Users/luke/Documents/SCENIC agent/data/SCENIC_full_anchor_positive_negative.json"
+  anchor_eval: "/Users/luke/Documents/SCENIC agent/data/SCENIC_full_anchor_positive_negative.json"
+
+  # Benchmark data used after both SFT and contrastive runs, and after pruning.
+  benchmark: data/benchmark.jsonl
+
+  # Leave these blank to use output_root/sft and output_root/contrastive.
+  # Fill them when you want to skip training and prune/evaluate existing checkpoints.
+  sft_model_path: ""
+  contrastive_model_path: ""
+
+stages:
+  train_sft: true
+  train_contrastive: true
+  prune_sft: true
+  prune_contrastive: true
+
+runtime:
+  cuda_visible_devices: "0,1,2,3,4,5,6,7"
+  tokenizers_parallelism: "false"
+  nccl_debug: WARN
+  pytorch_cuda_alloc_conf: expandable_segments:True
+  omp_num_threads: "8"
+
+training:
+  nproc_per_node: 8
+  num_train_epochs: 3.0
+  learning_rate: 5.0e-5
+  per_device_train_batch_size: 1
+  per_device_eval_batch_size: 1
+  gradient_accumulation_steps: 8
+  max_steps: -1
+  gradient_checkpointing: true
+
+generation:
+  top_k: 5
+  num_beams: 5
+  max_new_tokens: 256
+  max_seq_length: 512
+  source_max_length: 256
+  target_max_length: 256
+  generation_eval_limit:
+
+fields:
+  prompt: prompt
+  response: response
+  anchor: anchor
+  positive: positive
+  # Use "negative" for valid hard different-response negatives.
+  # Use "invalid_negative" for the invalid compatibility negative.
+  negative: invalid_negative
+
+contrastive:
+  loss_weight: 0.2
+  margin: 0.2
+
+pruning:
+  methods:
+    - magnitude
+    - gradient
+    - nvidia
+    - wanda
+  sparsity: 0.5
+  calibration_limit: 128

@@ -130,6 +130,55 @@ python scripts/run_chatlm_8gpu_sft.py \
 
 Use `--precision fp16` instead if your GPUs/checkpoint run better in float16.
 
+Run the full 8-GPU SFT + contrastive + pruning suite from one config file:
+
+1. Edit all paths in [configs/experiment_8gpu.yaml](configs/experiment_8gpu.yaml):
+
+```yaml
+paths:
+  sft_train: data/sft.jsonl
+  sft_eval: data/eval.jsonl
+  contrastive_train: "/Users/luke/Documents/SCENIC agent/data/SCENIC_full_anchor_positive_negative.json"
+  anchor_eval: "/Users/luke/Documents/SCENIC agent/data/SCENIC_full_anchor_positive_negative.json"
+  benchmark: data/benchmark.jsonl
+  output_root: runs/chatlm-mini-full-8gpu-suite
+```
+
+2. Preview every command before launching:
+
+```bash
+python scripts/run_8gpu_full_suite.py \
+  --config configs/experiment_8gpu.yaml \
+  --dry_run
+```
+
+3. Run everything:
+
+```bash
+python scripts/run_8gpu_full_suite.py \
+  --config configs/experiment_8gpu.yaml
+```
+
+This trains/evaluates regular SFT and contrastive SFT on 8 GPUs, then runs `magnitude`, `gradient`, `nvidia`, and `wanda` pruning for both checkpoints. Outputs are grouped under `output_root`:
+
+```text
+runs/chatlm-mini-full-8gpu-suite/
+  sft/generation_eval/top1_top5_metrics.json
+  contrastive/generation_eval/top1_top5_metrics.json
+  pruning/sft/METHOD/benchmark_metrics.json
+  pruning/contrastive/METHOD/benchmark_metrics.json
+  combined_summary.json
+  combined_summary.csv
+```
+
+To prune existing checkpoints without retraining, set `paths.sft_model_path` and/or `paths.contrastive_model_path` in the config, set `stages.train_sft: false` and `stages.train_contrastive: false`, then run:
+
+```bash
+python scripts/run_8gpu_full_suite.py \
+  --config configs/experiment_8gpu.yaml \
+  --stage prune
+```
+
 For 8-GPU contrastive triplet SFT on the SCENIC anchor-positive-negative file:
 
 ```bash

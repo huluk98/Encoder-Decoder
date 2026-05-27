@@ -12,6 +12,7 @@ dependencies = [
   "accelerate>=0.29",
   "datasets>=2.19",
   "numpy>=1.24",
+  "PyYAML>=6.0",
   "torch>=2.1",
   "tqdm>=4.66",
   "transformers>=4.41",
@@ -34,4 +35,3 @@ where = ["src"]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
-

@@ -20,6 +20,12 @@ TARGET_MAX_LENGTH="${TARGET_MAX_LENGTH:-256}"
 CALIBRATION_LIMIT="${CALIBRATION_LIMIT:-128}"
 PROMPT_FIELD="${PROMPT_FIELD:-prompt}"
 RESPONSE_FIELD="${RESPONSE_FIELD:-response}"
+CALIBRATION_PROMPT_FIELD="${CALIBRATION_PROMPT_FIELD:-${PROMPT_FIELD}}"
+CALIBRATION_RESPONSE_FIELD="${CALIBRATION_RESPONSE_FIELD:-${RESPONSE_FIELD}}"
+EVAL_PROMPT_FIELD="${EVAL_PROMPT_FIELD:-${PROMPT_FIELD}}"
+EVAL_RESPONSE_FIELD="${EVAL_RESPONSE_FIELD:-${RESPONSE_FIELD}}"
+BENCHMARK_PROMPT_FIELD="${BENCHMARK_PROMPT_FIELD:-${EVAL_PROMPT_FIELD}}"
+BENCHMARK_RESPONSE_FIELD="${BENCHMARK_RESPONSE_FIELD:-${EVAL_RESPONSE_FIELD}}"
 TRUST_REMOTE_CODE="${TRUST_REMOTE_CODE:-1}"
 METHODS="${METHODS:-magnitude gradient nvidia wanda}"
 
@@ -82,8 +88,8 @@ run_prune() {
         --sparsity "${SPARSITY}" \
         --calibration_source "${CALIBRATION_SOURCE}" \
         --calibration_limit "${CALIBRATION_LIMIT}" \
-        --prompt_field "${PROMPT_FIELD}" \
-        --response_field "${RESPONSE_FIELD}" \
+        --prompt_field "${CALIBRATION_PROMPT_FIELD}" \
+        --response_field "${CALIBRATION_RESPONSE_FIELD}" \
         --max_seq_length "${MAX_SEQ_LENGTH}" \
         --source_max_length "${SOURCE_MAX_LENGTH}" \
         --target_max_length "${TARGET_MAX_LENGTH}" \
@@ -112,8 +118,8 @@ run_prune() {
         --sparsity "${SPARSITY}" \
         --calibration_source "${CALIBRATION_SOURCE}" \
         --calibration_limit "${CALIBRATION_LIMIT}" \
-        --prompt_field "${PROMPT_FIELD}" \
-        --response_field "${RESPONSE_FIELD}" \
+        --prompt_field "${CALIBRATION_PROMPT_FIELD}" \
+        --response_field "${CALIBRATION_RESPONSE_FIELD}" \
         --max_seq_length "${MAX_SEQ_LENGTH}" \
         --source_max_length "${SOURCE_MAX_LENGTH}" \
         --target_max_length "${TARGET_MAX_LENGTH}" \
@@ -130,6 +136,8 @@ run_eval() {
   local method="$1"
   local split_name="$2"
   local source_path="$3"
+  local prompt_field="$4"
+  local response_field="$5"
   local method_dir="${OUTPUT_ROOT}/${method}"
   local pruned_dir="${method_dir}/model"
 
@@ -142,8 +150,8 @@ run_eval() {
     --model_family "${MODEL_FAMILY}" \
     --torch_dtype "${TORCH_DTYPE}" \
     "${trust_args[@]}" \
-    --prompt_field "${PROMPT_FIELD}" \
-    --response_field "${RESPONSE_FIELD}" \
+    --prompt_field "${prompt_field}" \
+    --response_field "${response_field}" \
     --max_input_length "${MAX_INPUT_LENGTH}" \
     --max_new_tokens "${MAX_NEW_TOKENS}" \
     --top_k "${TOP_K}" \
@@ -152,8 +160,12 @@ run_eval() {
 
 for method in ${METHODS}; do
   run_prune "${method}"
-  run_eval "${method}" "eval" "${EVAL_SOURCE}"
-  run_eval "${method}" "benchmark" "${BENCHMARK_SOURCE}"
+  if [[ -n "${EVAL_SOURCE}" ]]; then
+    run_eval "${method}" "eval" "${EVAL_SOURCE}" "${EVAL_PROMPT_FIELD}" "${EVAL_RESPONSE_FIELD}"
+  fi
+  if [[ -n "${BENCHMARK_SOURCE}" ]]; then
+    run_eval "${method}" "benchmark" "${BENCHMARK_SOURCE}" "${BENCHMARK_PROMPT_FIELD}" "${BENCHMARK_RESPONSE_FIELD}"
+  fi
 done
 
 python - "${OUTPUT_ROOT}" "${TOP_K}" ${METHODS} <<'PY'
@@ -170,6 +182,8 @@ print(f"method\t split\t top1_exact\t exact@{top_k}\t total")
 for method in methods:
     for split in ("eval", "benchmark"):
         metrics_path = root / method / f"{split}_metrics.json"
+        if not metrics_path.exists():
+            continue
         metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
         topk_key = next(
             key
