@@ -6,7 +6,7 @@ This repository provides a small, practical toolkit for:
 2. Exact-match generation evaluation against an eval file.
 3. Vanilla pruning methods: magnitude, gradient, NVIDIA 2:4, and WANDA.
 
-It supports both decoder-only checkpoints such as `charent/chatLM-mini-Chinese` and encoder-decoder checkpoints such as T5-style 0.5B models. The code auto-detects model family from the Hugging Face config, or you can force `--model_family causal` or `--model_family seq2seq`.
+It supports both decoder-only checkpoints and encoder-decoder checkpoints such as `charent/ChatLM-mini-Chinese` or T5-style 0.5B models. The code auto-detects model family from the Hugging Face config, or you can force `--model_family causal` or `--model_family seq2seq`.
 
 ## Setup
 
@@ -45,7 +45,7 @@ Decoder-only example:
 
 ```bash
 encdec-sft \
-  --model_name_or_path charent/chatLM-mini-Chinese \
+  --model_name_or_path charent/ChatLM-mini-Chinese \
   --train_source examples/train.jsonl \
   --eval_source examples/eval.jsonl \
   --output_dir runs/chatlm-mini-sft \
@@ -81,7 +81,7 @@ To train regular SFT and report exact-match plus top-5 generation accuracy on bo
 
 ```bash
 encdec-sft \
-  --model_name_or_path charent/chatLM-mini-Chinese \
+  --model_name_or_path charent/ChatLM-mini-Chinese \
   --train_source data/sft.jsonl \
   --sft_eval_source data/sft.jsonl \
   --benchmark_eval_source data/benchmark.jsonl \
@@ -90,11 +90,22 @@ encdec-sft \
   --generation_eval_top_k 5
 ```
 
+Quick wrapper for `charent/ChatLM-mini-Chinese`:
+
+```bash
+python scripts/run_chatlm_quick.py \
+  --train_source data/sft.jsonl \
+  --benchmark_source data/benchmark.jsonl \
+  --output_dir runs/chatlm-mini-sft \
+  --mode sft \
+  --top_k 5
+```
+
 For a contrastive-style dataset where the prompt lives in an `anchor` field, evaluate only the anchor side plus the same benchmark:
 
 ```bash
 encdec-sft \
-  --model_name_or_path charent/chatLM-mini-Chinese \
+  --model_name_or_path charent/ChatLM-mini-Chinese \
   --train_source data/sft.jsonl \
   --anchor_eval_source data/contrastive.jsonl \
   --anchor_field anchor \
@@ -103,6 +114,18 @@ encdec-sft \
   --output_dir runs/chatlm-mini-contrastive-anchor-eval \
   --model_family causal \
   --generation_eval_top_k 5
+```
+
+Quick contrastive anchor run:
+
+```bash
+python scripts/run_chatlm_quick.py \
+  --train_source data/sft.jsonl \
+  --anchor_source data/contrastive.jsonl \
+  --benchmark_source data/benchmark.jsonl \
+  --output_dir runs/chatlm-mini-anchor \
+  --mode contrastive \
+  --top_k 5
 ```
 
 ## Exact Evaluation

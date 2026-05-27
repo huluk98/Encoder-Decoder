@@ -7,7 +7,7 @@ I have working CMC/T5 pruning scripts for magnitude, gradient/Taylor, NVIDIA 2:4
 
 Target model type:
 - Decoder-only causal LM, loaded with AutoModelForCausalLM.
-- Example model: charent/chatLM-mini-Chinese or a local fine-tuned decoder-only checkpoint.
+- Example model: a local fine-tuned decoder-only checkpoint.
 - Dataset records have {"prompt": "...", "response": "..."}.
 
 General pruning requirements:
@@ -62,4 +62,3 @@ Please verify:
 - Gradient/Taylor removes weights with the smallest `abs(weight * gradient)`, meaning weights estimated to matter least to the calibration loss.
 - NVIDIA 2:4 keeps two weights and zeros two weights in every group of four input weights.
 - WANDA removes weights using both weight size and input activation strength: `abs(weight) * activation_norm`, pruning row-wise.
-
