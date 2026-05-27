@@ -77,6 +77,34 @@ For decoder-only models, only response tokens are used as labels. Prompt tokens 
 
 Use the same template for SFT and exact evaluation.
 
+To train regular SFT and report exact-match plus top-5 generation accuracy on both the SFT dataset and a benchmark dataset:
+
+```bash
+encdec-sft \
+  --model_name_or_path charent/chatLM-mini-Chinese \
+  --train_source data/sft.jsonl \
+  --sft_eval_source data/sft.jsonl \
+  --benchmark_eval_source data/benchmark.jsonl \
+  --output_dir runs/chatlm-mini-sft \
+  --model_family causal \
+  --generation_eval_top_k 5
+```
+
+For a contrastive-style dataset where the prompt lives in an `anchor` field, evaluate only the anchor side plus the same benchmark:
+
+```bash
+encdec-sft \
+  --model_name_or_path charent/chatLM-mini-Chinese \
+  --train_source data/sft.jsonl \
+  --anchor_eval_source data/contrastive.jsonl \
+  --anchor_field anchor \
+  --anchor_response_field response \
+  --benchmark_eval_source data/benchmark.jsonl \
+  --output_dir runs/chatlm-mini-contrastive-anchor-eval \
+  --model_family causal \
+  --generation_eval_top_k 5
+```
+
 ## Exact Evaluation
 
 ```bash
@@ -84,10 +112,13 @@ encdec-eval-exact \
   --model_name_or_path runs/chatlm-mini-sft \
   --eval_source examples/eval.jsonl \
   --output_path runs/chatlm-mini-eval/predictions.jsonl \
-  --model_family causal
+  --model_family causal \
+  --top_k 5
 ```
 
-The evaluator generates one response per prompt and compares it to the reference response. By default it strips leading and trailing whitespace only. Add `--collapse_whitespace` or `--lowercase` if you want a more forgiving exact match.
+The evaluator generates one or more candidate responses per prompt and compares them to the reference response. `accuracy` is exact match for the first candidate, while `top_5_accuracy` checks whether any of the five beam candidates exactly matches. By default it strips leading and trailing whitespace only. Add `--collapse_whitespace` or `--lowercase` if you want a more forgiving exact match.
+
+When generation eval is launched from `encdec-sft`, predictions are written under `OUTPUT_DIR/generation_eval/`, with aggregate metrics in `OUTPUT_DIR/generation_eval/metrics.json`.
 
 ## Pruning
 

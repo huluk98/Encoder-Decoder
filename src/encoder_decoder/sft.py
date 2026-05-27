@@ -4,6 +4,7 @@ import argparse
 import inspect
 import json
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Sequence
 
 from encoder_decoder.data import load_prompt_response_records
@@ -22,10 +23,18 @@ class SFTConfig:
     train_source: str
     output_dir: str
     eval_source: str | None = None
+    sft_eval_source: str | None = None
+    benchmark_eval_source: str | None = None
+    anchor_eval_source: str | None = None
     train_split: str | None = None
     eval_split: str | None = None
+    sft_eval_split: str | None = None
+    benchmark_eval_split: str | None = None
+    anchor_eval_split: str | None = None
     prompt_field: str = "prompt"
     response_field: str = "response"
+    anchor_field: str = "anchor"
+    anchor_response_field: str = "response"
     model_family: ModelFamily = "auto"
     trust_remote_code: bool = False
     max_seq_length: int = 1024
@@ -33,6 +42,11 @@ class SFTConfig:
     target_max_length: int = 256
     causal_prompt_template: str = DEFAULT_CAUSAL_PROMPT_TEMPLATE
     causal_response_template: str = DEFAULT_CAUSAL_RESPONSE_TEMPLATE
+    eval_train_source_generation: bool = False
+    generation_eval_top_k: int = 5
+    generation_eval_num_beams: int | None = None
+    generation_eval_max_new_tokens: int = 256
+    generation_eval_limit: int | None = None
     per_device_train_batch_size: int = 1
     per_device_eval_batch_size: int = 1
     gradient_accumulation_steps: int = 8
@@ -86,7 +100,11 @@ def train_sft(config: SFTConfig) -> dict[str, float]:
     )
 
     train_dataset = Dataset.from_list([record.__dict__ for record in train_records])
-    eval_dataset = Dataset.from_list([record.__dict__ for record in eval_records]) if eval_records else None
+    eval_dataset = (
+        Dataset.from_list([record.__dict__ for record in eval_records])
+        if eval_records
+        else None
+    )
 
     def preprocess(example: dict[str, str]) -> dict[str, list[int]]:
         if resolved_family == "seq2seq":
@@ -143,6 +161,88 @@ def train_sft(config: SFTConfig) -> dict[str, float]:
         trainer.log_metrics("eval", eval_metrics)
         trainer.save_metrics("eval", eval_metrics)
         metrics.update({f"eval_{key}": value for key, value in eval_metrics.items()})
+    metrics.update(_run_generation_evals(config))
+    return metrics
+
+
+def _run_generation_evals(config: SFTConfig) -> dict[str, float]:
+    from encoder_decoder.evaluate_exact import ExactEvalConfig, evaluate_exact
+
+    jobs = []
+    if config.eval_train_source_generation:
+        jobs.append(
+            (
+                "sft_train",
+                config.train_source,
+                config.train_split,
+                config.prompt_field,
+                config.response_field,
+            )
+        )
+    if config.sft_eval_source:
+        jobs.append(
+            (
+                "sft",
+                config.sft_eval_source,
+                config.sft_eval_split,
+                config.prompt_field,
+                config.response_field,
+            )
+        )
+    if config.benchmark_eval_source:
+        jobs.append(
+            (
+                "benchmark",
+                config.benchmark_eval_source,
+                config.benchmark_eval_split,
+                config.prompt_field,
+                config.response_field,
+            )
+        )
+    if config.anchor_eval_source:
+        jobs.append(
+            (
+                "anchor",
+                config.anchor_eval_source,
+                config.anchor_eval_split,
+                config.anchor_field,
+                config.anchor_response_field,
+            )
+        )
+
+    if not jobs:
+        return {}
+
+    metrics: dict[str, float] = {}
+    prediction_dir = Path(config.output_dir) / "generation_eval"
+    prediction_dir.mkdir(parents=True, exist_ok=True)
+
+    for name, source, split, prompt_field, response_field in jobs:
+        result = evaluate_exact(
+            ExactEvalConfig(
+                model_name_or_path=config.output_dir,
+                eval_source=source,
+                output_path=str(prediction_dir / f"{name}_predictions.jsonl"),
+                split=split,
+                prompt_field=prompt_field,
+                response_field=response_field,
+                model_family=config.model_family,
+                trust_remote_code=config.trust_remote_code,
+                max_input_length=config.source_max_length,
+                max_new_tokens=config.generation_eval_max_new_tokens,
+                top_k=config.generation_eval_top_k,
+                num_beams=config.generation_eval_num_beams,
+                causal_prompt_template=config.causal_prompt_template,
+                limit=config.generation_eval_limit,
+            )
+        )
+        metrics[f"{name}_exact_accuracy"] = result.accuracy
+        metrics[f"{name}_exact_correct"] = result.correct
+        metrics[f"{name}_total"] = result.total
+        metrics[f"{name}_top_{result.top_k}_accuracy"] = result.top_k_accuracy
+        metrics[f"{name}_top_{result.top_k}_correct"] = result.top_k_correct
+    with (prediction_dir / "metrics.json").open("w", encoding="utf-8") as handle:
+        json.dump(metrics, handle, indent=2, sort_keys=True)
     return metrics
 
 
@@ -184,10 +284,18 @@ def parse_args(argv: Sequence[str] | None = None) -> SFTConfig:
     parser.add_argument("--train_source", required=True)
     parser.add_argument("--output_dir", required=True)
     parser.add_argument("--eval_source")
+    parser.add_argument("--sft_eval_source")
+    parser.add_argument("--benchmark_eval_source")
+    parser.add_argument("--anchor_eval_source")
     parser.add_argument("--train_split")
     parser.add_argument("--eval_split")
+    parser.add_argument("--sft_eval_split")
+    parser.add_argument("--benchmark_eval_split")
+    parser.add_argument("--anchor_eval_split")
     parser.add_argument("--prompt_field", default="prompt")
     parser.add_argument("--response_field", default="response")
+    parser.add_argument("--anchor_field", default="anchor")
+    parser.add_argument("--anchor_response_field", default="response")
     parser.add_argument("--model_family", choices=["auto", "causal", "seq2seq"], default="auto")
     parser.add_argument("--trust_remote_code", action="store_true")
     parser.add_argument("--max_seq_length", type=int, default=1024)
@@ -195,6 +303,11 @@ def parse_args(argv: Sequence[str] | None = None) -> SFTConfig:
     parser.add_argument("--target_max_length", type=int, default=256)
     parser.add_argument("--causal_prompt_template", default=DEFAULT_CAUSAL_PROMPT_TEMPLATE)
     parser.add_argument("--causal_response_template", default=DEFAULT_CAUSAL_RESPONSE_TEMPLATE)
+    parser.add_argument("--eval_train_source_generation", action="store_true")
+    parser.add_argument("--generation_eval_top_k", type=int, default=5)
+    parser.add_argument("--generation_eval_num_beams", type=int)
+    parser.add_argument("--generation_eval_max_new_tokens", type=int, default=256)
+    parser.add_argument("--generation_eval_limit", type=int)
     parser.add_argument("--per_device_train_batch_size", type=int, default=1)
     parser.add_argument("--per_device_eval_batch_size", type=int, default=1)
     parser.add_argument("--gradient_accumulation_steps", type=int, default=8)
@@ -228,4 +341,3 @@ def main(argv: Sequence[str] | None = None) -> int:
     metrics = train_sft(parse_args(argv))
     print(json.dumps(metrics, indent=2, sort_keys=True))
     return 0
-

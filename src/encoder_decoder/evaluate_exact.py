@@ -26,6 +26,8 @@ class ExactEvalConfig:
     torch_dtype: str | None = "auto"
     max_input_length: int = 768
     max_new_tokens: int = 256
+    top_k: int = 1
+    num_beams: int | None = None
     causal_prompt_template: str = DEFAULT_CAUSAL_PROMPT_TEMPLATE
     strip: bool = True
     lowercase: bool = False
@@ -38,7 +40,9 @@ class Prediction:
     prompt: str
     response: str
     prediction: str
+    predictions: list[str]
     exact: bool
+    top_k_exact: bool
 
 
 @dataclass
@@ -46,6 +50,9 @@ class ExactEvalResult:
     total: int
     correct: int
     accuracy: float
+    top_k: int
+    top_k_correct: int
+    top_k_accuracy: float
     predictions: list[Prediction]
 
 
@@ -102,7 +109,7 @@ def evaluate_exact(config: ExactEvalConfig) -> ExactEvalResult:
 
     predictions: list[Prediction] = []
     for record in _progress(records, desc="Exact eval"):
-        prediction = _generate_one(
+        candidates = _generate_candidates(
             model,
             tokenizer,
             resolved_family=resolved_family,
@@ -110,24 +117,37 @@ def evaluate_exact(config: ExactEvalConfig) -> ExactEvalResult:
             device=device,
             max_input_length=config.max_input_length,
             max_new_tokens=config.max_new_tokens,
+            top_k=config.top_k,
+            num_beams=config.num_beams,
             causal_prompt_template=config.causal_prompt_template,
         )
+        prediction = candidates[0] if candidates else ""
         is_exact = exact_match(prediction, record.response, config=config)
+        is_top_k_exact = any(
+            exact_match(candidate, record.response, config=config)
+            for candidate in candidates
+        )
         predictions.append(
             Prediction(
                 prompt=record.prompt,
                 response=record.response,
                 prediction=prediction,
+                predictions=candidates,
                 exact=is_exact,
+                top_k_exact=is_top_k_exact,
             )
         )
 
     correct = sum(item.exact for item in predictions)
+    top_k_correct = sum(item.top_k_exact for item in predictions)
     total = len(predictions)
     result = ExactEvalResult(
         total=total,
         correct=correct,
         accuracy=correct / total if total else 0.0,
+        top_k=max(1, config.top_k),
+        top_k_correct=top_k_correct,
+        top_k_accuracy=top_k_correct / total if total else 0.0,
         predictions=predictions,
     )
     if config.output_path:
@@ -135,7 +155,7 @@ def evaluate_exact(config: ExactEvalConfig) -> ExactEvalResult:
     return result
 
 
-def _generate_one(
+def _generate_candidates(
     model,
     tokenizer,
     *,
@@ -144,9 +164,20 @@ def _generate_one(
     device,
     max_input_length: int,
     max_new_tokens: int,
+    top_k: int,
+    num_beams: int | None,
     causal_prompt_template: str,
-) -> str:
+) -> list[str]:
     import torch
+
+    top_k = max(1, top_k)
+    beams = max(top_k, num_beams or top_k)
+    generate_kwargs = {
+        "max_new_tokens": max_new_tokens,
+        "do_sample": False,
+        "num_beams": beams,
+        "num_return_sequences": top_k,
+    }
 
     if resolved_family == "seq2seq":
         inputs = tokenizer(
@@ -157,8 +188,8 @@ def _generate_one(
         )
         inputs = {key: value.to(device) for key, value in inputs.items()}
         with torch.no_grad():
-            output_ids = model.generate(**inputs, max_new_tokens=max_new_tokens)
-        return tokenizer.decode(output_ids[0], skip_special_tokens=True)
+            output_ids = model.generate(**inputs, **generate_kwargs)
+        return [tokenizer.decode(ids, skip_special_tokens=True) for ids in output_ids]
 
     tokenizer.padding_side = "left"
     prompt_text = build_causal_prompt(prompt, causal_prompt_template)
@@ -170,18 +201,16 @@ def _generate_one(
     )
     inputs = {key: value.to(device) for key, value in inputs.items()}
     input_length = inputs["input_ids"].shape[-1]
-    generate_kwargs = {
-        "max_new_tokens": max_new_tokens,
-        "do_sample": False,
-    }
     if tokenizer.pad_token_id is not None:
         generate_kwargs["pad_token_id"] = tokenizer.pad_token_id
     if tokenizer.eos_token_id is not None:
         generate_kwargs["eos_token_id"] = tokenizer.eos_token_id
     with torch.no_grad():
         output_ids = model.generate(**inputs, **generate_kwargs)
-    generated_ids = output_ids[0, input_length:]
-    return tokenizer.decode(generated_ids, skip_special_tokens=True)
+    return [
+        tokenizer.decode(ids[input_length:], skip_special_tokens=True)
+        for ids in output_ids
+    ]
 
 
 def _default_device() -> str:
@@ -223,6 +252,8 @@ def parse_args(argv: Sequence[str] | None = None) -> ExactEvalConfig:
     parser.add_argument("--torch_dtype", default="auto")
     parser.add_argument("--max_input_length", type=int, default=768)
     parser.add_argument("--max_new_tokens", type=int, default=256)
+    parser.add_argument("--top_k", type=int, default=1)
+    parser.add_argument("--num_beams", type=int)
     parser.add_argument("--causal_prompt_template", default=DEFAULT_CAUSAL_PROMPT_TEMPLATE)
     parser.add_argument("--no_strip", action="store_true")
     parser.add_argument("--lowercase", action="store_true")
@@ -240,6 +271,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         "total": result.total,
         "correct": result.correct,
         "accuracy": result.accuracy,
+        f"top_{result.top_k}_correct": result.top_k_correct,
+        f"top_{result.top_k}_accuracy": result.top_k_accuracy,
     }
     print(json.dumps(payload, indent=2, sort_keys=True))
     return 0
