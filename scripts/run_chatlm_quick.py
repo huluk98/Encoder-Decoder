@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import shlex
 import subprocess
 import sys
@@ -9,6 +10,7 @@ from pathlib import Path
 from typing import Sequence
 
 DEFAULT_MODEL = "charent/ChatLM-mini-Chinese"
+REQUIRED_MODULES = ("accelerate", "datasets", "torch", "transformers")
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -39,7 +41,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--output_dir", help="Output directory. Defaults under runs/.")
     parser.add_argument("--model_name_or_path", default=DEFAULT_MODEL)
-    parser.add_argument("--model_family", choices=["auto", "causal", "seq2seq"], default="auto")
+    parser.add_argument("--model_family", choices=["auto", "causal", "seq2seq"], default="seq2seq")
     parser.add_argument("--prompt_field", default="prompt")
     parser.add_argument("--response_field", default="response")
     parser.add_argument("--anchor_field", default="anchor")
@@ -84,6 +86,29 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     if args.mode == "contrastive" and not args.anchor_source:
         parser.error("--anchor_source is required when --mode contrastive")
     return args
+
+
+def missing_dependencies() -> list[str]:
+    return [
+        module
+        for module in REQUIRED_MODULES
+        if importlib.util.find_spec(module) is None
+    ]
+
+
+def print_dependency_help(missing: Sequence[str]) -> None:
+    missing_text = ", ".join(missing)
+    print(
+        f"Missing Python packages for training: {missing_text}\n\n"
+        "Run one of these from the repository root, then retry:\n\n"
+        "  conda env create -f environment.yml\n"
+        "  conda activate encoder-decoder-prune\n"
+        "  pip install -e \".[dev]\"\n\n"
+        "or, for an existing environment:\n\n"
+        "  python -m pip install -r requirements.txt\n"
+        "  python -m pip install -e \".[dev]\"\n",
+        file=sys.stderr,
+    )
 
 
 def build_command(args: argparse.Namespace) -> list[str]:
@@ -178,10 +203,21 @@ def build_command(args: argparse.Namespace) -> list[str]:
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     command = build_command(args)
-    print("Running:")
-    print(" ".join(shlex.quote(part) for part in command))
+    command_text = " ".join(shlex.quote(part) for part in command)
     if args.dry_run:
+        print("Running:")
+        print(command_text)
         return 0
+
+    missing = missing_dependencies()
+    if missing:
+        print_dependency_help(missing)
+        print("Command after dependencies are installed:")
+        print(command_text)
+        return 2
+
+    print("Running:")
+    print(command_text)
     subprocess.run(command, check=True)
     return 0
 

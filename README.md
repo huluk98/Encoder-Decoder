@@ -27,6 +27,19 @@ python -m pip install --upgrade pip
 pip install -e ".[dev]"
 ```
 
+If you already have a Python environment and only need the packages:
+
+```bash
+python -m pip install -r requirements.txt
+python -m pip install -e ".[dev]"
+```
+
+Verify the environment before launching training:
+
+```bash
+python -c "import torch, transformers, datasets, accelerate; print('env ok')"
+```
+
 See [docs/decoder_only_pruning_prompt.md](docs/decoder_only_pruning_prompt.md) for a copy-paste prompt that describes the expected decoder-only 50% pruning behavior against the CMC scripts.
 
 ## Copy-Paste Quickstart
@@ -39,6 +52,7 @@ cd Encoder-Decoder
 conda env create -f environment.yml
 conda activate encoder-decoder-prune
 pip install -e ".[dev]"
+python -c "import torch, transformers, datasets, accelerate; print('env ok')"
 ```
 
 Run a tiny smoke test with the included examples:
@@ -62,6 +76,7 @@ python scripts/run_chatlm_quick.py \
   --benchmark_source data/benchmark.jsonl \
   --output_dir runs/chatlm-mini-sft \
   --mode sft \
+  --model_family seq2seq \
   --num_train_epochs 3 \
   --learning_rate 5e-5 \
   --top_k 5
@@ -76,6 +91,7 @@ python scripts/run_chatlm_quick.py \
   --benchmark_source data/benchmark.jsonl \
   --output_dir runs/chatlm-mini-anchor \
   --mode contrastive \
+  --model_family seq2seq \
   --num_train_epochs 3 \
   --learning_rate 5e-5 \
   --top_k 5
@@ -100,7 +116,7 @@ Use `--prompt_field` and `--response_field` if your columns differ.
 
 ## SFT
 
-Decoder-only example:
+ChatLM-mini example:
 
 ```bash
 encdec-sft \
@@ -108,7 +124,7 @@ encdec-sft \
   --train_source examples/train.jsonl \
   --eval_source examples/eval.jsonl \
   --output_dir runs/chatlm-mini-sft \
-  --model_family causal \
+  --model_family seq2seq \
   --per_device_train_batch_size 1 \
   --gradient_accumulation_steps 8 \
   --learning_rate 2e-5 \
@@ -145,7 +161,7 @@ encdec-sft \
   --sft_eval_source data/sft.jsonl \
   --benchmark_eval_source data/benchmark.jsonl \
   --output_dir runs/chatlm-mini-sft \
-  --model_family causal \
+  --model_family seq2seq \
   --generation_eval_top_k 5
 ```
 
@@ -171,7 +187,7 @@ encdec-sft \
   --anchor_response_field response \
   --benchmark_eval_source data/benchmark.jsonl \
   --output_dir runs/chatlm-mini-contrastive-anchor-eval \
-  --model_family causal \
+  --model_family seq2seq \
   --generation_eval_top_k 5
 ```
 
@@ -194,7 +210,7 @@ encdec-eval-exact \
   --model_name_or_path runs/chatlm-mini-sft \
   --eval_source examples/eval.jsonl \
   --output_path runs/chatlm-mini-eval/predictions.jsonl \
-  --model_family causal \
+  --model_family seq2seq \
   --top_k 5
 ```
 
