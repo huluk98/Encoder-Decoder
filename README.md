@@ -29,6 +29,65 @@ pip install -e ".[dev]"
 
 See [docs/decoder_only_pruning_prompt.md](docs/decoder_only_pruning_prompt.md) for a copy-paste prompt that describes the expected decoder-only 50% pruning behavior against the CMC scripts.
 
+## Copy-Paste Quickstart
+
+Install and enter the environment:
+
+```bash
+git clone https://github.com/huluk98/Encoder-Decoder.git
+cd Encoder-Decoder
+conda env create -f environment.yml
+conda activate encoder-decoder-prune
+pip install -e ".[dev]"
+```
+
+Run a tiny smoke test with the included examples:
+
+```bash
+python scripts/run_chatlm_quick.py \
+  --train_source examples/train.jsonl \
+  --benchmark_source examples/eval.jsonl \
+  --output_dir runs/smoke-chatlm \
+  --mode sft \
+  --max_steps 1 \
+  --generation_eval_limit 1 \
+  --top_k 5
+```
+
+Run regular SFT on your SFT dataset and benchmark:
+
+```bash
+python scripts/run_chatlm_quick.py \
+  --train_source data/sft.jsonl \
+  --benchmark_source data/benchmark.jsonl \
+  --output_dir runs/chatlm-mini-sft \
+  --mode sft \
+  --num_train_epochs 3 \
+  --learning_rate 5e-5 \
+  --top_k 5
+```
+
+Run contrastive anchor-only evaluation plus benchmark:
+
+```bash
+python scripts/run_chatlm_quick.py \
+  --train_source data/sft.jsonl \
+  --anchor_source data/contrastive.jsonl \
+  --benchmark_source data/benchmark.jsonl \
+  --output_dir runs/chatlm-mini-anchor \
+  --mode contrastive \
+  --num_train_epochs 3 \
+  --learning_rate 5e-5 \
+  --top_k 5
+```
+
+After each run, check:
+
+```bash
+cat runs/chatlm-mini-sft/generation_eval/metrics.json
+ls runs/chatlm-mini-sft/generation_eval/
+```
+
 ## Data Format
 
 Local `.jsonl`, `.json`, `.csv`, `.tsv`, Hugging Face datasets, and `datasets.save_to_disk(...)` directories are supported. The default columns are `prompt` and `response`.
