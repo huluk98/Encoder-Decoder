@@ -8,11 +8,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Sequence
 
-from encoder_decoder.data import load_prompt_response_records
+from encoder_decoder.data import load_contrastive_records, load_prompt_response_records
 from encoder_decoder.modeling import ModelFamily, load_tokenizer_and_model
 from encoder_decoder.tokenization import (
     DEFAULT_CAUSAL_PROMPT_TEMPLATE,
     DEFAULT_CAUSAL_RESPONSE_TEMPLATE,
+    build_causal_prompt,
     tokenize_causal_prompt_response,
     tokenize_seq2seq_prompt_response,
 )
@@ -23,6 +24,7 @@ class SFTConfig:
     model_name_or_path: str
     train_source: str
     output_dir: str
+    training_mode: str = "sft"
     eval_source: str | None = None
     sft_eval_source: str | None = None
     benchmark_eval_source: str | None = None
@@ -36,6 +38,12 @@ class SFTConfig:
     response_field: str = "response"
     anchor_field: str = "anchor"
     anchor_response_field: str = "response"
+    contrastive_anchor_field: str = "anchor"
+    contrastive_positive_field: str = "positive"
+    contrastive_negative_field: str = "negative"
+    contrastive_response_field: str = "response"
+    contrastive_loss_weight: float = 0.2
+    contrastive_margin: float = 0.2
     model_family: ModelFamily = "auto"
     trust_remote_code: bool = False
     torch_dtype: str | None = "auto"
@@ -85,62 +93,83 @@ def train_sft(config: SFTConfig) -> dict[str, float]:
         if hasattr(model.config, "use_cache"):
             model.config.use_cache = False
 
-    train_records = load_prompt_response_records(
-        config.train_source,
-        split=config.train_split,
-        prompt_field=config.prompt_field,
-        response_field=config.response_field,
-    )
-    eval_records = (
-        load_prompt_response_records(
-            config.eval_source,
-            split=config.eval_split,
+    if config.training_mode == "contrastive":
+        train_records = load_contrastive_records(
+            config.train_source,
+            split=config.train_split,
+            anchor_field=config.contrastive_anchor_field,
+            positive_field=config.contrastive_positive_field,
+            negative_field=config.contrastive_negative_field,
+            response_field=config.contrastive_response_field,
+        )
+        tokenized_train = Dataset.from_list([record.__dict__ for record in train_records])
+        tokenized_eval = None
+        data_collator = ContrastiveTripletDataCollator(
+            tokenizer=tokenizer,
+            resolved_family=resolved_family,
+            config=config,
+        )
+        trainer_class = _contrastive_trainer_class(Trainer)
+    elif config.training_mode == "sft":
+        train_records = load_prompt_response_records(
+            config.train_source,
+            split=config.train_split,
             prompt_field=config.prompt_field,
             response_field=config.response_field,
         )
-        if config.eval_source
-        else None
-    )
+        eval_records = (
+            load_prompt_response_records(
+                config.eval_source,
+                split=config.eval_split,
+                prompt_field=config.prompt_field,
+                response_field=config.response_field,
+            )
+            if config.eval_source
+            else None
+        )
 
-    train_dataset = Dataset.from_list([record.__dict__ for record in train_records])
-    eval_dataset = (
-        Dataset.from_list([record.__dict__ for record in eval_records])
-        if eval_records
-        else None
-    )
+        train_dataset = Dataset.from_list([record.__dict__ for record in train_records])
+        eval_dataset = (
+            Dataset.from_list([record.__dict__ for record in eval_records])
+            if eval_records
+            else None
+        )
 
-    def preprocess(example: dict[str, str]) -> dict[str, list[int]]:
-        if resolved_family == "seq2seq":
-            return tokenize_seq2seq_prompt_response(
+        def preprocess(example: dict[str, str]) -> dict[str, list[int]]:
+            if resolved_family == "seq2seq":
+                return tokenize_seq2seq_prompt_response(
+                    tokenizer,
+                    prompt=example["prompt"],
+                    response=example["response"],
+                    source_max_length=config.source_max_length,
+                    target_max_length=config.target_max_length,
+                )
+            return tokenize_causal_prompt_response(
                 tokenizer,
                 prompt=example["prompt"],
                 response=example["response"],
-                source_max_length=config.source_max_length,
+                max_seq_length=config.max_seq_length,
                 target_max_length=config.target_max_length,
+                prompt_template=config.causal_prompt_template,
+                response_template=config.causal_response_template,
             )
-        return tokenize_causal_prompt_response(
-            tokenizer,
-            prompt=example["prompt"],
-            response=example["response"],
-            max_seq_length=config.max_seq_length,
-            target_max_length=config.target_max_length,
-            prompt_template=config.causal_prompt_template,
-            response_template=config.causal_response_template,
+
+        tokenized_train = train_dataset.map(preprocess, remove_columns=train_dataset.column_names)
+        tokenized_eval = (
+            eval_dataset.map(preprocess, remove_columns=eval_dataset.column_names)
+            if eval_dataset is not None
+            else None
         )
 
-    tokenized_train = train_dataset.map(preprocess, remove_columns=train_dataset.column_names)
-    tokenized_eval = (
-        eval_dataset.map(preprocess, remove_columns=eval_dataset.column_names)
-        if eval_dataset is not None
-        else None
-    )
-
-    data_collator = DataCollatorForSeq2Seq(
-        tokenizer=tokenizer,
-        model=model,
-        label_pad_token_id=-100,
-        pad_to_multiple_of=8 if config.fp16 or config.bf16 else None,
-    )
+        data_collator = DataCollatorForSeq2Seq(
+            tokenizer=tokenizer,
+            model=model,
+            label_pad_token_id=-100,
+            pad_to_multiple_of=8 if config.fp16 or config.bf16 else None,
+        )
+        trainer_class = Trainer
+    else:
+        raise ValueError("training_mode must be 'sft' or 'contrastive'.")
     training_args = _build_training_args(config, eval_enabled=tokenized_eval is not None)
 
     trainer_kwargs = {
@@ -155,7 +184,15 @@ def train_sft(config: SFTConfig) -> dict[str, float]:
         trainer_kwargs["processing_class"] = tokenizer
     else:
         trainer_kwargs["tokenizer"] = tokenizer
-    trainer = Trainer(**trainer_kwargs)
+    if config.training_mode == "contrastive":
+        trainer_kwargs.update(
+            {
+                "contrastive_loss_weight": config.contrastive_loss_weight,
+                "contrastive_margin": config.contrastive_margin,
+                "resolved_family": resolved_family,
+            }
+        )
+    trainer = trainer_class(**trainer_kwargs)
     train_result = trainer.train(resume_from_checkpoint=config.resume_from_checkpoint)
     trainer.save_model(config.output_dir)
     if trainer.is_world_process_zero():
@@ -178,6 +215,186 @@ def train_sft(config: SFTConfig) -> dict[str, float]:
         if trainer.is_world_process_zero():
             metrics.update(_run_generation_evals(config))
     return metrics
+
+
+class ContrastiveTripletDataCollator:
+    def __init__(self, *, tokenizer, resolved_family: str, config: SFTConfig) -> None:
+        self.tokenizer = tokenizer
+        self.resolved_family = resolved_family
+        self.config = config
+
+    def __call__(self, features: list[dict[str, object]]) -> dict[str, object]:
+        batch = self._generation_batch(features)
+        rep_texts = (
+            [str(item["anchor"]) for item in features]
+            + [str(item["positive"]) for item in features]
+            + [str(item["negative"]) for item in features]
+        )
+        if self.resolved_family != "seq2seq":
+            rep_texts = [
+                build_causal_prompt(text, self.config.causal_prompt_template)
+                for text in rep_texts
+            ]
+        rep_batch = self.tokenizer(
+            rep_texts,
+            padding=True,
+            truncation=True,
+            max_length=self._representation_max_length(),
+            return_tensors="pt",
+        )
+        rep_batch.pop("token_type_ids", None)
+        batch["rep_input_ids"] = rep_batch["input_ids"]
+        batch["rep_attention_mask"] = rep_batch["attention_mask"]
+        return batch
+
+    def _generation_batch(self, features: list[dict[str, object]]) -> dict[str, object]:
+        prompts = []
+        responses = []
+        for item in features:
+            response = str(item["response"])
+            prompts.extend([str(item["anchor"]), str(item["positive"])])
+            responses.extend([response, response])
+
+        if self.resolved_family == "seq2seq":
+            model_inputs = self.tokenizer(
+                prompts,
+                padding=True,
+                truncation=True,
+                max_length=self.config.source_max_length,
+                return_tensors="pt",
+            )
+            model_inputs.pop("token_type_ids", None)
+            labels = self._target_tokenize(responses)
+            label_ids = labels["input_ids"]
+            label_ids[label_ids == self.tokenizer.pad_token_id] = -100
+            model_inputs["labels"] = label_ids
+            return dict(model_inputs)
+
+        encoded = [
+            tokenize_causal_prompt_response(
+                self.tokenizer,
+                prompt=prompt,
+                response=response,
+                max_seq_length=self.config.max_seq_length,
+                target_max_length=self.config.target_max_length,
+                prompt_template=self.config.causal_prompt_template,
+                response_template=self.config.causal_response_template,
+            )
+            for prompt, response in zip(prompts, responses)
+        ]
+        return _pad_causal_features(encoded, pad_token_id=self.tokenizer.pad_token_id)
+
+    def _target_tokenize(self, responses: list[str]):
+        try:
+            return self.tokenizer(
+                text_target=responses,
+                padding=True,
+                truncation=True,
+                max_length=self.config.target_max_length,
+                return_tensors="pt",
+            )
+        except TypeError:
+            with self.tokenizer.as_target_tokenizer():
+                return self.tokenizer(
+                    responses,
+                    padding=True,
+                    truncation=True,
+                    max_length=self.config.target_max_length,
+                    return_tensors="pt",
+                )
+
+    def _representation_max_length(self) -> int:
+        if self.resolved_family == "seq2seq":
+            return self.config.source_max_length
+        return max(1, self.config.max_seq_length - self.config.target_max_length)
+
+
+def _pad_causal_features(features: list[dict[str, list[int]]], *, pad_token_id: int) -> dict[str, object]:
+    import torch
+
+    max_length = max(len(item["input_ids"]) for item in features)
+    padded = {"input_ids": [], "attention_mask": [], "labels": []}
+    pad_values = {"input_ids": pad_token_id, "attention_mask": 0, "labels": -100}
+    for item in features:
+        pad_length = max_length - len(item["input_ids"])
+        for key in padded:
+            padded[key].append(item[key] + [pad_values[key]] * pad_length)
+    return {key: torch.tensor(value, dtype=torch.long) for key, value in padded.items()}
+
+
+def _contrastive_trainer_class(base_trainer):
+    class CompatibilityContrastiveTrainer(base_trainer):
+        def __init__(
+            self,
+            *args,
+            contrastive_loss_weight: float,
+            contrastive_margin: float,
+            resolved_family: str,
+            **kwargs,
+        ) -> None:
+            super().__init__(*args, **kwargs)
+            self.contrastive_loss_weight = contrastive_loss_weight
+            self.contrastive_margin = contrastive_margin
+            self.resolved_family = resolved_family
+
+        def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
+            import torch
+            import torch.nn.functional as functional
+
+            rep_input_ids = inputs.pop("rep_input_ids")
+            rep_attention_mask = inputs.pop("rep_attention_mask")
+
+            outputs = model(**inputs)
+            if outputs.loss is None:
+                raise RuntimeError("Contrastive SFT requires model outputs to include generation loss.")
+
+            reps = _command_representations(
+                model,
+                input_ids=rep_input_ids,
+                attention_mask=rep_attention_mask,
+                resolved_family=self.resolved_family,
+            )
+            batch_size = reps.shape[0] // 3
+            anchor = reps[:batch_size]
+            positive = reps[batch_size : 2 * batch_size]
+            negative = reps[2 * batch_size :]
+
+            positive_distance = 1.0 - functional.cosine_similarity(anchor, positive, dim=-1)
+            negative_distance = 1.0 - functional.cosine_similarity(anchor, negative, dim=-1)
+            align_loss = torch.clamp(
+                self.contrastive_margin + positive_distance - negative_distance,
+                min=0.0,
+            ).mean()
+            loss = outputs.loss + self.contrastive_loss_weight * align_loss
+            return (loss, outputs) if return_outputs else loss
+
+    return CompatibilityContrastiveTrainer
+
+
+def _command_representations(model, *, input_ids, attention_mask, resolved_family: str):
+    import torch.nn.functional as functional
+
+    if resolved_family == "seq2seq":
+        encoder = model.get_encoder()
+        outputs = encoder(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            return_dict=True,
+        )
+        hidden = outputs.last_hidden_state
+    else:
+        outputs = model(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            output_hidden_states=True,
+            return_dict=True,
+            use_cache=False,
+        )
+        hidden = outputs.hidden_states[-1]
+
+    mask = attention_mask.unsqueeze(-1).to(dtype=hidden.dtype)
+    pooled = (hidden * mask).sum(dim=1) / mask.sum(dim=1).clamp(min=1.0)
+    return functional.normalize(pooled.float(), p=2, dim=-1)
 
 
 def _has_generation_evals(config: SFTConfig) -> bool:
@@ -312,6 +529,7 @@ def parse_args(argv: Sequence[str] | None = None) -> SFTConfig:
     parser.add_argument("--model_name_or_path", required=True)
     parser.add_argument("--train_source", required=True)
     parser.add_argument("--output_dir", required=True)
+    parser.add_argument("--training_mode", choices=["sft", "contrastive"], default="sft")
     parser.add_argument("--eval_source")
     parser.add_argument("--sft_eval_source")
     parser.add_argument("--benchmark_eval_source")
@@ -325,6 +543,12 @@ def parse_args(argv: Sequence[str] | None = None) -> SFTConfig:
     parser.add_argument("--response_field", default="response")
     parser.add_argument("--anchor_field", default="anchor")
     parser.add_argument("--anchor_response_field", default="response")
+    parser.add_argument("--contrastive_anchor_field", default="anchor")
+    parser.add_argument("--contrastive_positive_field", default="positive")
+    parser.add_argument("--contrastive_negative_field", default="negative")
+    parser.add_argument("--contrastive_response_field", default="response")
+    parser.add_argument("--contrastive_loss_weight", type=float, default=0.2)
+    parser.add_argument("--contrastive_margin", type=float, default=0.2)
     parser.add_argument("--model_family", choices=["auto", "causal", "seq2seq"], default="auto")
     parser.add_argument("--trust_remote_code", action="store_true")
     parser.add_argument("--torch_dtype", default="auto")

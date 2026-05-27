@@ -19,8 +19,10 @@ from typing import Sequence
 MODEL_NAME_OR_PATH = "charent/ChatLM-mini-Chinese"
 
 TRAIN_SOURCE = "data/sft.jsonl"
+TRAINING_MODE = "sft"  # Use "sft" or "contrastive".
 EVAL_SOURCE = "data/eval.jsonl"
 BENCHMARK_SOURCE = "data/benchmark.jsonl"
+ANCHOR_EVAL_SOURCE = ""
 OUTPUT_DIR = "runs/chatlm-mini-8gpu-sft"
 
 # Change epochs here for the normal run.
@@ -51,6 +53,11 @@ NUM_BEAMS = 5
 # Data columns.
 PROMPT_FIELD = "prompt"
 RESPONSE_FIELD = "response"
+ANCHOR_FIELD = "anchor"
+POSITIVE_FIELD = "positive"
+NEGATIVE_FIELD = "negative"
+CONTRASTIVE_LOSS_WEIGHT = 0.2
+CONTRASTIVE_MARGIN = 0.2
 
 REQUIRED_MODULES = ("accelerate", "datasets", "torch", "transformers")
 
@@ -63,8 +70,10 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         )
     )
     parser.add_argument("--train_source", default=TRAIN_SOURCE)
+    parser.add_argument("--training_mode", choices=["sft", "contrastive"], default=TRAINING_MODE)
     parser.add_argument("--eval_source", default=EVAL_SOURCE)
     parser.add_argument("--benchmark_source", default=BENCHMARK_SOURCE)
+    parser.add_argument("--anchor_eval_source", default=ANCHOR_EVAL_SOURCE)
     parser.add_argument("--output_dir", default=OUTPUT_DIR)
     parser.add_argument("--model_name_or_path", "--model_path", default=MODEL_NAME_OR_PATH)
     parser.add_argument("--model_family", choices=["auto", "causal", "seq2seq"], default=MODEL_FAMILY)
@@ -84,6 +93,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--max_steps", type=int, default=MAX_STEPS)
     parser.add_argument("--prompt_field", default=PROMPT_FIELD)
     parser.add_argument("--response_field", default=RESPONSE_FIELD)
+    parser.add_argument("--anchor_field", default=ANCHOR_FIELD)
+    parser.add_argument("--contrastive_positive_field", default=POSITIVE_FIELD)
+    parser.add_argument("--contrastive_negative_field", default=NEGATIVE_FIELD)
+    parser.add_argument("--contrastive_loss_weight", type=float, default=CONTRASTIVE_LOSS_WEIGHT)
+    parser.add_argument("--contrastive_margin", type=float, default=CONTRASTIVE_MARGIN)
     parser.add_argument("--generation_eval_limit", type=int)
     parser.add_argument("--skip_train", action="store_true")
     parser.add_argument("--skip_eval", action="store_true")
@@ -136,6 +150,8 @@ def build_train_command(args: argparse.Namespace) -> list[str]:
         args.eval_source,
         "--output_dir",
         args.output_dir,
+        "--training_mode",
+        args.training_mode,
         "--model_family",
         args.model_family,
         "--torch_dtype",
@@ -167,6 +183,23 @@ def build_train_command(args: argparse.Namespace) -> list[str]:
     ]
     if TRUST_REMOTE_CODE and not args.no_trust_remote_code:
         command.append("--trust_remote_code")
+    if args.training_mode == "contrastive":
+        command.extend(
+            [
+                "--contrastive_anchor_field",
+                args.anchor_field,
+                "--contrastive_positive_field",
+                args.contrastive_positive_field,
+                "--contrastive_negative_field",
+                args.contrastive_negative_field,
+                "--contrastive_response_field",
+                args.response_field,
+                "--contrastive_loss_weight",
+                str(args.contrastive_loss_weight),
+                "--contrastive_margin",
+                str(args.contrastive_margin),
+            ]
+        )
     if precision == "bf16":
         command.append("--bf16")
     elif precision == "fp16":
@@ -197,6 +230,8 @@ def build_eval_command(
     *,
     name: str,
     source: str,
+    prompt_field: str,
+    response_field: str,
 ) -> list[str]:
     output_path = Path(args.output_dir) / "generation_eval" / f"{name}_predictions.jsonl"
     script_path = Path(__file__).resolve().with_name("evaluate_exact.py")
@@ -211,9 +246,9 @@ def build_eval_command(
         "--output_path",
         str(output_path),
         "--prompt_field",
-        args.prompt_field,
+        prompt_field,
         "--response_field",
-        args.response_field,
+        response_field,
         "--model_family",
         args.model_family,
         "--torch_dtype",
@@ -232,6 +267,42 @@ def build_eval_command(
     if args.generation_eval_limit is not None:
         command.extend(["--limit", str(args.generation_eval_limit)])
     return command
+
+
+def build_eval_commands(args: argparse.Namespace) -> list[list[str]]:
+    if args.training_mode == "contrastive":
+        return [
+            build_eval_command(
+                args,
+                name="anchor",
+                source=args.anchor_eval_source or args.train_source,
+                prompt_field=args.anchor_field,
+                response_field=args.response_field,
+            ),
+            build_eval_command(
+                args,
+                name="benchmark",
+                source=args.benchmark_source,
+                prompt_field=args.prompt_field,
+                response_field=args.response_field,
+            ),
+        ]
+    return [
+        build_eval_command(
+            args,
+            name="eval",
+            source=args.eval_source,
+            prompt_field=args.prompt_field,
+            response_field=args.response_field,
+        ),
+        build_eval_command(
+            args,
+            name="benchmark",
+            source=args.benchmark_source,
+            prompt_field=args.prompt_field,
+            response_field=args.response_field,
+        ),
+    ]
 
 
 def run(command: Sequence[str], *, capture_json: bool = False) -> dict[str, object] | None:
@@ -283,12 +354,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not args.skip_train:
         commands.append(build_train_command(args))
     if not args.skip_eval:
-        commands.extend(
-            [
-                build_eval_command(args, name="eval", source=args.eval_source),
-                build_eval_command(args, name="benchmark", source=args.benchmark_source),
-            ]
-        )
+        commands.extend(build_eval_commands(args))
 
     if args.dry_run:
         for command in commands:
@@ -305,14 +371,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     results = {}
     if not args.skip_eval:
-        results["eval"] = run(
-            build_eval_command(args, name="eval", source=args.eval_source),
-            capture_json=True,
-        )
-        results["benchmark"] = run(
-            build_eval_command(args, name="benchmark", source=args.benchmark_source),
-            capture_json=True,
-        )
+        eval_names = ["anchor", "benchmark"] if args.training_mode == "contrastive" else ["eval", "benchmark"]
+        for name, command in zip(eval_names, build_eval_commands(args)):
+            results[name] = run(command, capture_json=True)
         write_summary(args, results)
     return 0
 

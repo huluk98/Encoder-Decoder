@@ -89,6 +89,7 @@ Run 8-GPU SFT with top-1 and top-5 eval:
 ```python
 MODEL_NAME_OR_PATH = "charent/ChatLM-mini-Chinese"
 TRAIN_SOURCE = "data/sft.jsonl"
+TRAINING_MODE = "sft"  # use "sft" or "contrastive"
 EVAL_SOURCE = "data/eval.jsonl"
 BENCHMARK_SOURCE = "data/benchmark.jsonl"
 OUTPUT_DIR = "runs/chatlm-mini-8gpu-sft"
@@ -129,20 +130,39 @@ python scripts/run_chatlm_8gpu_sft.py \
 
 Use `--precision fp16` instead if your GPUs/checkpoint run better in float16.
 
-Run contrastive anchor-only evaluation plus benchmark:
+For 8-GPU contrastive triplet SFT on the SCENIC anchor-positive-negative file:
+
+```bash
+python scripts/run_chatlm_8gpu_sft.py \
+  --training_mode contrastive \
+  --model_path charent/ChatLM-mini-Chinese \
+  --train_source "/path/to/SCENIC_full_anchor_positive_negative.json" \
+  --benchmark_source /path/to/benchmark.jsonl \
+  --output_dir runs/chatlm-mini-8gpu-contrastive \
+  --contrastive_negative_field invalid_negative \
+  --epochs 3 \
+  --precision bf16
+```
+
+Run contrastive triplet SFT plus anchor-only evaluation and benchmark:
 
 ```bash
 python scripts/run_chatlm_quick.py \
-  --train_source data/sft.jsonl \
-  --anchor_source data/contrastive.jsonl \
+  --train_source data/SCENIC_full_anchor_positive_negative.json \
+  --anchor_source data/SCENIC_full_anchor_positive_negative.json \
   --benchmark_source data/benchmark.jsonl \
-  --output_dir runs/chatlm-mini-anchor \
+  --output_dir runs/chatlm-mini-contrastive \
   --mode contrastive \
   --model_family seq2seq \
+  --contrastive_negative_field invalid_negative \
+  --contrastive_loss_weight 0.2 \
+  --contrastive_margin 0.2 \
   --num_train_epochs 3 \
   --learning_rate 5e-5 \
   --top_k 5
 ```
+
+Contrastive mode follows compatibility-aware triplet SFT: it trains generation loss on both `anchor -> response` and `positive -> response`, then adds a triplet alignment loss that pulls the anchor representation toward `positive` and pushes it away from `negative`. The default negative column is `negative`; use `--contrastive_negative_field invalid_negative` when you want the invalid compatibility hard negative from the SCENIC file.
 
 After each run, check:
 
@@ -160,6 +180,20 @@ Local `.jsonl`, `.json`, `.csv`, `.tsv`, Hugging Face datasets, and `datasets.sa
 ```
 
 Use `--prompt_field` and `--response_field` if your columns differ.
+
+Contrastive triplet SFT expects anchor-positive-negative records. The SCENIC file already follows this shape:
+
+```json
+{
+  "anchor": "10点关空调。",
+  "positive": "请在10点关闭空调。",
+  "negative": "空调1点半关。",
+  "invalid_negative": "把空调亮度调高。",
+  "response": "好的，已为空调设置10点关闭。"
+}
+```
+
+Use `--contrastive_negative_field negative` for valid hard negatives with different responses, or `--contrastive_negative_field invalid_negative` for the invalid compatibility negative shown in the triplet algorithm.
 
 ## SFT
 
@@ -223,12 +257,19 @@ python scripts/run_chatlm_quick.py \
   --top_k 5
 ```
 
-For a contrastive-style dataset where the prompt lives in an `anchor` field, evaluate only the anchor side plus the same benchmark:
+For a contrastive-style dataset where the prompt lives in an `anchor` field, train with triplet SFT and evaluate only the anchor side plus the same benchmark:
 
 ```bash
 encdec-sft \
   --model_name_or_path charent/ChatLM-mini-Chinese \
-  --train_source data/sft.jsonl \
+  --train_source data/contrastive.jsonl \
+  --training_mode contrastive \
+  --contrastive_anchor_field anchor \
+  --contrastive_positive_field positive \
+  --contrastive_negative_field invalid_negative \
+  --contrastive_response_field response \
+  --contrastive_loss_weight 0.2 \
+  --contrastive_margin 0.2 \
   --anchor_eval_source data/contrastive.jsonl \
   --anchor_field anchor \
   --anchor_response_field response \
@@ -238,15 +279,16 @@ encdec-sft \
   --generation_eval_top_k 5
 ```
 
-Quick contrastive anchor run:
+Quick contrastive triplet run:
 
 ```bash
 python scripts/run_chatlm_quick.py \
-  --train_source data/sft.jsonl \
+  --train_source data/contrastive.jsonl \
   --anchor_source data/contrastive.jsonl \
   --benchmark_source data/benchmark.jsonl \
-  --output_dir runs/chatlm-mini-anchor \
+  --output_dir runs/chatlm-mini-contrastive \
   --mode contrastive \
+  --contrastive_negative_field invalid_negative \
   --top_k 5
 ```
 

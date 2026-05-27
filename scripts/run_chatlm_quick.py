@@ -30,7 +30,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--mode",
         choices=["sft", "contrastive"],
         default="sft",
-        help="sft evaluates the SFT data plus benchmark; contrastive evaluates anchor plus benchmark.",
+        help="sft uses prompt/response data; contrastive uses anchor/positive/negative triplets.",
     )
     parser.add_argument(
         "--sft_eval_source",
@@ -48,6 +48,10 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--response_field", default="response")
     parser.add_argument("--anchor_field", default="anchor")
     parser.add_argument("--anchor_response_field", default="response")
+    parser.add_argument("--contrastive_positive_field", default="positive")
+    parser.add_argument("--contrastive_negative_field", default="negative")
+    parser.add_argument("--contrastive_loss_weight", type=float, default=0.2)
+    parser.add_argument("--contrastive_margin", type=float, default=0.2)
     parser.add_argument("--train_split")
     parser.add_argument("--sft_eval_split")
     parser.add_argument("--benchmark_eval_split")
@@ -185,6 +189,20 @@ def build_command(args: argparse.Namespace) -> list[str]:
     else:
         command.extend(
             [
+                "--training_mode",
+                "contrastive",
+                "--contrastive_anchor_field",
+                args.anchor_field,
+                "--contrastive_positive_field",
+                args.contrastive_positive_field,
+                "--contrastive_negative_field",
+                args.contrastive_negative_field,
+                "--contrastive_response_field",
+                args.anchor_response_field,
+                "--contrastive_loss_weight",
+                str(args.contrastive_loss_weight),
+                "--contrastive_margin",
+                str(args.contrastive_margin),
                 "--anchor_eval_source",
                 args.anchor_source,
                 "--anchor_field",

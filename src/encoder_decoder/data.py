@@ -14,6 +14,15 @@ class PromptResponseRecord:
     meta: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class ContrastiveRecord:
+    anchor: str
+    positive: str
+    negative: str
+    response: str
+    meta: dict[str, Any] = field(default_factory=dict)
+
+
 def load_prompt_response_records(
     source: str,
     *,
@@ -36,6 +45,38 @@ def load_prompt_response_records(
         _coerce_records(
             rows,
             prompt_field=prompt_field,
+            response_field=response_field,
+            max_records=max_records,
+        )
+    )
+
+
+def load_contrastive_records(
+    source: str,
+    *,
+    split: str | None = None,
+    anchor_field: str = "anchor",
+    positive_field: str = "positive",
+    negative_field: str = "negative",
+    response_field: str = "response",
+    max_records: int | None = None,
+) -> list[ContrastiveRecord]:
+    """Load anchor-positive-negative-response records for contrastive SFT."""
+    path = Path(source)
+    if path.exists():
+        if path.is_dir():
+            rows = _load_dataset_from_disk(path, split)
+        else:
+            rows = _load_local_file(path)
+    else:
+        rows = _load_huggingface_dataset(source, split)
+
+    return list(
+        _coerce_contrastive_records(
+            rows,
+            anchor_field=anchor_field,
+            positive_field=positive_field,
+            negative_field=negative_field,
             response_field=response_field,
             max_records=max_records,
         )
@@ -112,3 +153,30 @@ def _coerce_records(
             meta=meta,
         )
 
+
+def _coerce_contrastive_records(
+    rows: Iterable[dict[str, Any]],
+    *,
+    anchor_field: str,
+    positive_field: str,
+    negative_field: str,
+    response_field: str,
+    max_records: int | None,
+) -> Iterable[ContrastiveRecord]:
+    required_fields = {anchor_field, positive_field, negative_field, response_field}
+    for index, row in enumerate(rows):
+        if max_records is not None and index >= max_records:
+            break
+        missing = [field_name for field_name in required_fields if field_name not in row]
+        if missing:
+            columns = ", ".join(sorted(str(key) for key in row.keys()))
+            missing_text = ", ".join(repr(field_name) for field_name in missing)
+            raise KeyError(f"Expected fields {missing_text}; got columns: {columns}")
+        meta = {key: value for key, value in row.items() if key not in required_fields}
+        yield ContrastiveRecord(
+            anchor="" if row[anchor_field] is None else str(row[anchor_field]),
+            positive="" if row[positive_field] is None else str(row[positive_field]),
+            negative="" if row[negative_field] is None else str(row[negative_field]),
+            response="" if row[response_field] is None else str(row[response_field]),
+            meta=meta,
+        )
