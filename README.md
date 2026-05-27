@@ -136,8 +136,8 @@ Run the full 8-GPU SFT + contrastive + pruning suite from one config file:
 
 ```yaml
 paths:
-  sft_train: data/sft.jsonl
-  sft_eval: data/eval.jsonl
+  sft_train: "/Users/luke/Documents/SCENIC agent/data/SCENIC_full_anchor_positive_negative.json"
+  sft_eval: "/Users/luke/Documents/SCENIC agent/data/SCENIC_full_anchor_positive_negative.json"
   contrastive_train: "/Users/luke/Documents/SCENIC agent/data/SCENIC_full_anchor_positive_negative.json"
   anchor_eval: "/Users/luke/Documents/SCENIC agent/data/SCENIC_full_anchor_positive_negative.json"
   benchmark: data/benchmark.jsonl
@@ -159,7 +159,7 @@ python scripts/run_8gpu_full_suite.py \
   --config configs/experiment_8gpu.yaml
 ```
 
-This trains/evaluates regular SFT and contrastive SFT on 8 GPUs, then runs `magnitude`, `gradient`, `nvidia`, and `wanda` pruning for both checkpoints. Outputs are grouped under `output_root`:
+This trains/evaluates regular SFT and contrastive SFT on 8 GPUs, then runs `magnitude`, `gradient`, `nvidia`, and `wanda` pruning for both checkpoints at 50% sparsity. The default config treats the full SCENIC training file as `anchor -> response` for regular SFT/full-train eval, uses `anchor/positive/invalid_negative -> response` for contrastive SFT, and keeps benchmark eval on `prompt -> response`. Outputs are grouped under `output_root`:
 
 ```text
 runs/chatlm-mini-full-8gpu-suite/
@@ -169,7 +169,9 @@ runs/chatlm-mini-full-8gpu-suite/
   contrastive/generation_eval/top1_top5_metrics.json
   contrastive/generation_eval/anchor_metrics.json
   contrastive/generation_eval/benchmark_metrics.json
+  pruning/sft/METHOD/eval_metrics.json
   pruning/sft/METHOD/benchmark_metrics.json
+  pruning/contrastive/METHOD/eval_metrics.json
   pruning/contrastive/METHOD/benchmark_metrics.json
   combined_summary.json
   combined_summary.csv
@@ -182,6 +184,8 @@ python scripts/run_8gpu_full_suite.py \
   --config configs/experiment_8gpu.yaml \
   --stage prune
 ```
+
+The original CMC pruning files are also checked in under [reference_pruning_scripts](reference_pruning_scripts/) for comparison with the maintained configurable implementations.
 
 For 8-GPU contrastive triplet SFT on the SCENIC anchor-positive-negative file:
 

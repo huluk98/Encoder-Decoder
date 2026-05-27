@@ -93,7 +93,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--max_steps", type=int, default=MAX_STEPS)
     parser.add_argument("--prompt_field", default=PROMPT_FIELD)
     parser.add_argument("--response_field", default=RESPONSE_FIELD)
+    parser.add_argument("--eval_prompt_field")
+    parser.add_argument("--eval_response_field")
+    parser.add_argument("--benchmark_prompt_field")
+    parser.add_argument("--benchmark_response_field")
     parser.add_argument("--anchor_field", default=ANCHOR_FIELD)
+    parser.add_argument("--anchor_response_field")
     parser.add_argument("--contrastive_positive_field", default=POSITIVE_FIELD)
     parser.add_argument("--contrastive_negative_field", default=NEGATIVE_FIELD)
     parser.add_argument("--contrastive_loss_weight", type=float, default=CONTRASTIVE_LOSS_WEIGHT)
@@ -193,7 +198,7 @@ def build_train_command(args: argparse.Namespace) -> list[str]:
                 "--contrastive_negative_field",
                 args.contrastive_negative_field,
                 "--contrastive_response_field",
-                args.response_field,
+                contrastive_response_field(args),
                 "--contrastive_loss_weight",
                 str(args.contrastive_loss_weight),
                 "--contrastive_margin",
@@ -281,14 +286,14 @@ def build_eval_commands(args: argparse.Namespace) -> list[list[str]]:
                 name="anchor",
                 source=args.anchor_eval_source or args.train_source,
                 prompt_field=args.anchor_field,
-                response_field=args.response_field,
+                response_field=contrastive_response_field(args),
             ),
             build_eval_command(
                 args,
                 name="benchmark",
                 source=args.benchmark_source,
-                prompt_field=args.prompt_field,
-                response_field=args.response_field,
+                prompt_field=benchmark_prompt_field(args),
+                response_field=benchmark_response_field(args),
             ),
         ]
     return [
@@ -296,17 +301,37 @@ def build_eval_commands(args: argparse.Namespace) -> list[list[str]]:
             args,
             name="eval",
             source=args.eval_source,
-            prompt_field=args.prompt_field,
-            response_field=args.response_field,
+            prompt_field=eval_prompt_field(args),
+            response_field=eval_response_field(args),
         ),
         build_eval_command(
             args,
             name="benchmark",
             source=args.benchmark_source,
-            prompt_field=args.prompt_field,
-            response_field=args.response_field,
+            prompt_field=benchmark_prompt_field(args),
+            response_field=benchmark_response_field(args),
         ),
     ]
+
+
+def eval_prompt_field(args: argparse.Namespace) -> str:
+    return args.eval_prompt_field or args.prompt_field
+
+
+def eval_response_field(args: argparse.Namespace) -> str:
+    return args.eval_response_field or args.response_field
+
+
+def benchmark_prompt_field(args: argparse.Namespace) -> str:
+    return args.benchmark_prompt_field or args.prompt_field
+
+
+def benchmark_response_field(args: argparse.Namespace) -> str:
+    return args.benchmark_response_field or args.response_field
+
+
+def contrastive_response_field(args: argparse.Namespace) -> str:
+    return args.anchor_response_field or args.response_field
 
 
 def run(command: Sequence[str], *, capture_json: bool = False) -> dict[str, object] | None:

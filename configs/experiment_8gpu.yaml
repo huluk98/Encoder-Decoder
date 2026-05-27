@@ -11,11 +11,11 @@ model:
 paths:
   output_root: runs/chatlm-mini-full-8gpu-suite
 
-  # Regular SFT prompt/response data.
-  sft_train: data/sft.jsonl
-  sft_eval: data/eval.jsonl
+  # Full training data. Regular SFT uses anchor -> response from this file.
+  sft_train: "/Users/luke/Documents/SCENIC agent/data/SCENIC_full_anchor_positive_negative.json"
+  sft_eval: "/Users/luke/Documents/SCENIC agent/data/SCENIC_full_anchor_positive_negative.json"
 
-  # Contrastive triplet data.
+  # Contrastive triplet data. Contrastive SFT uses anchor/positive/negative -> response.
   contrastive_train: "/Users/luke/Documents/SCENIC agent/data/SCENIC_full_anchor_positive_negative.json"
   anchor_eval: "/Users/luke/Documents/SCENIC agent/data/SCENIC_full_anchor_positive_negative.json"
 
@@ -60,10 +60,20 @@ generation:
   generation_eval_limit:
 
 fields:
-  prompt: prompt
-  response: response
+  # Regular SFT train/full-train eval fields.
+  sft_prompt: anchor
+  sft_response: response
+  sft_eval_prompt: anchor
+  sft_eval_response: response
+
+  # Benchmark eval fields.
+  benchmark_prompt: prompt
+  benchmark_response: response
+
+  # Contrastive triplet fields.
   anchor: anchor
   positive: positive
+  contrastive_response: response
   # Use "negative" for valid hard different-response negatives.
   # Use "invalid_negative" for the invalid compatibility negative.
   negative: invalid_negative

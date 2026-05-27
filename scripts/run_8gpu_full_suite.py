@@ -228,6 +228,39 @@ def trust_remote_code(config: dict[str, Any]) -> bool:
     return bool(config_value(config, "model.trust_remote_code", True))
 
 
+def field_value(config: dict[str, Any], key: str, fallback: str) -> str:
+    fields = section(config, "fields")
+    return str(fields.get(key) or fields.get(fallback) or fallback)
+
+
+def sft_prompt_field(config: dict[str, Any]) -> str:
+    return field_value(config, "sft_prompt", "prompt")
+
+
+def sft_response_field(config: dict[str, Any]) -> str:
+    return field_value(config, "sft_response", "response")
+
+
+def sft_eval_prompt_field(config: dict[str, Any]) -> str:
+    return str(section(config, "fields").get("sft_eval_prompt") or sft_prompt_field(config))
+
+
+def sft_eval_response_field(config: dict[str, Any]) -> str:
+    return str(section(config, "fields").get("sft_eval_response") or sft_response_field(config))
+
+
+def benchmark_prompt_field(config: dict[str, Any]) -> str:
+    return field_value(config, "benchmark_prompt", "prompt")
+
+
+def benchmark_response_field(config: dict[str, Any]) -> str:
+    return field_value(config, "benchmark_response", "response")
+
+
+def contrastive_response_field(config: dict[str, Any]) -> str:
+    return str(section(config, "fields").get("contrastive_response") or sft_response_field(config))
+
+
 def runtime_env(config: dict[str, Any]) -> dict[str, str]:
     runtime = section(config, "runtime")
     env = os.environ.copy()
@@ -250,7 +283,6 @@ def build_train_command(config: dict[str, Any], mode: str) -> list[str]:
     script = root / "scripts" / "run_chatlm_8gpu_sft.py"
     generation = section(config, "generation")
     training = section(config, "training")
-    fields = section(config, "fields")
     contrastive = section(config, "contrastive")
 
     train_source = (
@@ -307,9 +339,17 @@ def build_train_command(config: dict[str, Any], mode: str) -> list[str]:
         "--target_max_length",
         str(generation.get("target_max_length", 256)),
         "--prompt_field",
-        str(fields.get("prompt", "prompt")),
+        sft_prompt_field(config) if mode == "sft" else benchmark_prompt_field(config),
         "--response_field",
-        str(fields.get("response", "response")),
+        sft_response_field(config) if mode == "sft" else contrastive_response_field(config),
+        "--eval_prompt_field",
+        sft_eval_prompt_field(config),
+        "--eval_response_field",
+        sft_eval_response_field(config),
+        "--benchmark_prompt_field",
+        benchmark_prompt_field(config),
+        "--benchmark_response_field",
+        benchmark_response_field(config),
     ]
     if generation.get("generation_eval_limit") is not None:
         command.extend(["--generation_eval_limit", str(generation["generation_eval_limit"])])
@@ -324,11 +364,13 @@ def build_train_command(config: dict[str, Any], mode: str) -> list[str]:
                 "--anchor_eval_source",
                 data_path(config, "anchor_eval", data_path(config, "contrastive_train")),
                 "--anchor_field",
-                str(fields.get("anchor", "anchor")),
+                field_value(config, "anchor", "anchor"),
+                "--anchor_response_field",
+                contrastive_response_field(config),
                 "--contrastive_positive_field",
-                str(fields.get("positive", "positive")),
+                field_value(config, "positive", "positive"),
                 "--contrastive_negative_field",
-                str(fields.get("negative", "negative")),
+                field_value(config, "negative", "negative"),
                 "--contrastive_loss_weight",
                 str(contrastive.get("loss_weight", 0.2)),
                 "--contrastive_margin",
@@ -341,7 +383,6 @@ def build_train_command(config: dict[str, Any], mode: str) -> list[str]:
 def build_prune_command(config: dict[str, Any], mode: str) -> tuple[list[str], dict[str, str]]:
     root = repo_root()
     generation = section(config, "generation")
-    fields = section(config, "fields")
     pruning = section(config, "pruning")
     output_dir = output_root(config) / "pruning" / mode
     calibration_source = (
@@ -368,15 +409,23 @@ def build_prune_command(config: dict[str, Any], mode: str) -> tuple[list[str], d
             "TARGET_MAX_LENGTH": str(generation.get("target_max_length", 256)),
             "CALIBRATION_LIMIT": str(pruning.get("calibration_limit", 128)),
             "CALIBRATION_PROMPT_FIELD": str(
-                fields.get("prompt", "prompt") if mode == "sft" else fields.get("anchor", "anchor")
+                sft_prompt_field(config) if mode == "sft" else field_value(config, "anchor", "anchor")
             ),
-            "CALIBRATION_RESPONSE_FIELD": str(fields.get("response", "response")),
+            "CALIBRATION_RESPONSE_FIELD": str(
+                sft_response_field(config) if mode == "sft" else contrastive_response_field(config)
+            ),
             "EVAL_PROMPT_FIELD": str(
-                fields.get("prompt", "prompt") if mode == "sft" else fields.get("anchor", "anchor")
+                sft_eval_prompt_field(config)
+                if mode == "sft"
+                else field_value(config, "anchor", "anchor")
             ),
-            "EVAL_RESPONSE_FIELD": str(fields.get("response", "response")),
-            "BENCHMARK_PROMPT_FIELD": str(fields.get("prompt", "prompt")),
-            "BENCHMARK_RESPONSE_FIELD": str(fields.get("response", "response")),
+            "EVAL_RESPONSE_FIELD": str(
+                sft_eval_response_field(config)
+                if mode == "sft"
+                else contrastive_response_field(config)
+            ),
+            "BENCHMARK_PROMPT_FIELD": benchmark_prompt_field(config),
+            "BENCHMARK_RESPONSE_FIELD": benchmark_response_field(config),
             "TRUST_REMOTE_CODE": "1" if trust_remote_code(config) else "0",
             "METHODS": " ".join(methods(config)),
         }
