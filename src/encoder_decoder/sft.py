@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import inspect
 import json
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Sequence
@@ -150,19 +151,37 @@ def train_sft(config: SFTConfig) -> dict[str, float]:
     )
     train_result = trainer.train(resume_from_checkpoint=config.resume_from_checkpoint)
     trainer.save_model(config.output_dir)
-    tokenizer.save_pretrained(config.output_dir)
+    if trainer.is_world_process_zero():
+        tokenizer.save_pretrained(config.output_dir)
     trainer.save_state()
 
     metrics = dict(train_result.metrics)
-    trainer.log_metrics("train", metrics)
-    trainer.save_metrics("train", metrics)
+    if trainer.is_world_process_zero():
+        trainer.log_metrics("train", metrics)
+        trainer.save_metrics("train", metrics)
     if tokenized_eval is not None:
         eval_metrics = trainer.evaluate()
-        trainer.log_metrics("eval", eval_metrics)
-        trainer.save_metrics("eval", eval_metrics)
+        if trainer.is_world_process_zero():
+            trainer.log_metrics("eval", eval_metrics)
+            trainer.save_metrics("eval", eval_metrics)
         metrics.update({f"eval_{key}": value for key, value in eval_metrics.items()})
-    metrics.update(_run_generation_evals(config))
+    if _has_generation_evals(config):
+        if hasattr(trainer, "accelerator"):
+            trainer.accelerator.wait_for_everyone()
+        if trainer.is_world_process_zero():
+            metrics.update(_run_generation_evals(config))
     return metrics
+
+
+def _has_generation_evals(config: SFTConfig) -> bool:
+    return any(
+        (
+            config.eval_train_source_generation,
+            config.sft_eval_source,
+            config.benchmark_eval_source,
+            config.anchor_eval_source,
+        )
+    )
 
 
 def _run_generation_evals(config: SFTConfig) -> dict[str, float]:
@@ -238,6 +257,8 @@ def _run_generation_evals(config: SFTConfig) -> dict[str, float]:
         )
         metrics[f"{name}_exact_accuracy"] = result.accuracy
         metrics[f"{name}_exact_correct"] = result.correct
+        metrics[f"{name}_top_1_accuracy"] = result.accuracy
+        metrics[f"{name}_top_1_correct"] = result.correct
         metrics[f"{name}_total"] = result.total
         metrics[f"{name}_top_{result.top_k}_accuracy"] = result.top_k_accuracy
         metrics[f"{name}_top_{result.top_k}_correct"] = result.top_k_correct
@@ -339,5 +360,10 @@ def _parse_report_to(value: str) -> list[str]:
 
 def main(argv: Sequence[str] | None = None) -> int:
     metrics = train_sft(parse_args(argv))
-    print(json.dumps(metrics, indent=2, sort_keys=True))
+    if _is_main_process():
+        print(json.dumps(metrics, indent=2, sort_keys=True))
     return 0
+
+
+def _is_main_process() -> bool:
+    return int(os.environ.get("RANK", "0")) == 0

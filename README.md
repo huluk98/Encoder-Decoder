@@ -82,6 +82,45 @@ python scripts/run_chatlm_quick.py \
   --top_k 5
 ```
 
+Run 8-GPU SFT with top-1 and top-5 eval:
+
+1. Edit these constants at the top of `scripts/run_chatlm_8gpu_sft.py`:
+
+```python
+TRAIN_SOURCE = "data/sft.jsonl"
+EVAL_SOURCE = "data/eval.jsonl"
+BENCHMARK_SOURCE = "data/benchmark.jsonl"
+OUTPUT_DIR = "runs/chatlm-mini-8gpu-sft"
+```
+
+2. Launch training and evaluation:
+
+```bash
+python scripts/run_chatlm_8gpu_sft.py
+```
+
+3. Read the top-1/top-5 output:
+
+```bash
+cat runs/chatlm-mini-8gpu-sft/generation_eval/top1_top5_metrics.json
+```
+
+For a quick command preview without launching:
+
+```bash
+python scripts/run_chatlm_8gpu_sft.py --dry_run
+```
+
+You can also override the paths without editing the file:
+
+```bash
+python scripts/run_chatlm_8gpu_sft.py \
+  --train_source /path/to/sft.jsonl \
+  --eval_source /path/to/eval.jsonl \
+  --benchmark_source /path/to/benchmark.jsonl \
+  --output_dir runs/chatlm-mini-8gpu-sft
+```
+
 Run contrastive anchor-only evaluation plus benchmark:
 
 ```bash

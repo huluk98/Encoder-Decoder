@@ -269,6 +269,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     result = evaluate_exact(parse_args(argv))
     payload = {
         "total": result.total,
+        "top_1_correct": result.correct,
+        "top_1_accuracy": result.accuracy,
         "correct": result.correct,
         "accuracy": result.accuracy,
         f"top_{result.top_k}_correct": result.top_k_correct,
