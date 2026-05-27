@@ -308,6 +308,27 @@ Every pruning run saves the pruned model, tokenizer, and `pruning_report.json` i
 
 The NVIDIA method follows the usual 2:4 constraint strictly: a linear layer is pruned only when its input dimension is divisible by the group size. Non-divisible layers are skipped instead of leaving a partial dense remainder.
 
+Run all four pruning methods and report exact match plus exact@5 on eval and benchmark:
+
+```bash
+MODEL_PATH=runs/chatlm-mini-8gpu-sft \
+CALIBRATION_SOURCE=data/sft.jsonl \
+EVAL_SOURCE=data/eval.jsonl \
+BENCHMARK_SOURCE=data/benchmark.jsonl \
+OUTPUT_ROOT=runs/pruning_eval \
+MODEL_FAMILY=seq2seq \
+TOP_K=5 \
+bash scripts/run_pruning_eval.sh
+```
+
+The script runs `magnitude`, `gradient`, `nvidia`, and `wanda`, then prints a summary table:
+
+```text
+method    split       top1_exact    exact@5    total
+```
+
+Full outputs are saved under `runs/pruning_eval/METHOD/`, including pruned models, prediction JSONL files, and metrics JSON files.
+
 ## Local Scripts
 
 The package commands are also available as direct scripts:

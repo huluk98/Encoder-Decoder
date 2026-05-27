@@ -17,6 +17,7 @@ class ExactEvalConfig:
     model_name_or_path: str
     eval_source: str
     output_path: str | None = None
+    metrics_path: str | None = None
     split: str | None = None
     prompt_field: str = "prompt"
     response_field: str = "response"
@@ -152,6 +153,8 @@ def evaluate_exact(config: ExactEvalConfig) -> ExactEvalResult:
     )
     if config.output_path:
         _write_predictions(result, Path(config.output_path))
+    if config.metrics_path:
+        _write_metrics(result, Path(config.metrics_path))
     return result
 
 
@@ -230,6 +233,26 @@ def _write_predictions(result: ExactEvalResult, output_path: Path) -> None:
             handle.write(json.dumps(asdict(prediction), ensure_ascii=False) + "\n")
 
 
+def metrics_payload(result: ExactEvalResult) -> dict[str, float | int]:
+    return {
+        "total": result.total,
+        "top_1_correct": result.correct,
+        "top_1_accuracy": result.accuracy,
+        "correct": result.correct,
+        "accuracy": result.accuracy,
+        f"top_{result.top_k}_correct": result.top_k_correct,
+        f"top_{result.top_k}_accuracy": result.top_k_accuracy,
+    }
+
+
+def _write_metrics(result: ExactEvalResult, metrics_path: Path) -> None:
+    metrics_path.parent.mkdir(parents=True, exist_ok=True)
+    metrics_path.write_text(
+        json.dumps(metrics_payload(result), indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+
+
 def _progress(iterable, *, desc: str):
     try:
         from tqdm.auto import tqdm
@@ -243,6 +266,7 @@ def parse_args(argv: Sequence[str] | None = None) -> ExactEvalConfig:
     parser.add_argument("--model_name_or_path", required=True)
     parser.add_argument("--eval_source", required=True)
     parser.add_argument("--output_path")
+    parser.add_argument("--metrics_path")
     parser.add_argument("--split")
     parser.add_argument("--prompt_field", default="prompt")
     parser.add_argument("--response_field", default="response")
@@ -267,14 +291,5 @@ def parse_args(argv: Sequence[str] | None = None) -> ExactEvalConfig:
 
 def main(argv: Sequence[str] | None = None) -> int:
     result = evaluate_exact(parse_args(argv))
-    payload = {
-        "total": result.total,
-        "top_1_correct": result.correct,
-        "top_1_accuracy": result.accuracy,
-        "correct": result.correct,
-        "accuracy": result.accuracy,
-        f"top_{result.top_k}_correct": result.top_k_correct,
-        f"top_{result.top_k}_accuracy": result.top_k_accuracy,
-    }
-    print(json.dumps(payload, indent=2, sort_keys=True))
+    print(json.dumps(metrics_payload(result), indent=2, sort_keys=True))
     return 0
