@@ -10,14 +10,23 @@ import sys
 from pathlib import Path
 from typing import Sequence
 
-# Edit these paths first.
+# ---------------------------------------------------------------------------
+# EDIT THIS BLOCK FIRST
+# ---------------------------------------------------------------------------
+# You can use the Hugging Face model ID below or replace it with a local T5 /
+# ChatLM checkpoint path, for example:
+#   MODEL_NAME_OR_PATH = "/nvme1/home/luke/PycharmProjects/iot_t5/sft"
+MODEL_NAME_OR_PATH = "charent/ChatLM-mini-Chinese"
+
 TRAIN_SOURCE = "data/sft.jsonl"
 EVAL_SOURCE = "data/eval.jsonl"
 BENCHMARK_SOURCE = "data/benchmark.jsonl"
 OUTPUT_DIR = "runs/chatlm-mini-8gpu-sft"
 
-# ChatLM-mini defaults.
-MODEL_NAME_OR_PATH = "charent/ChatLM-mini-Chinese"
+# Change epochs here for the normal run.
+NUM_TRAIN_EPOCHS = 3.0
+
+# ChatLM-mini/T5-style defaults.
 MODEL_FAMILY = "seq2seq"
 TRUST_REMOTE_CODE = True
 
@@ -27,7 +36,6 @@ PER_DEVICE_TRAIN_BATCH_SIZE = 1
 PER_DEVICE_EVAL_BATCH_SIZE = 1
 GRADIENT_ACCUMULATION_STEPS = 8
 LEARNING_RATE = 5e-5
-NUM_TRAIN_EPOCHS = 3.0
 MAX_STEPS = -1
 BF16 = True
 FP16 = False
@@ -59,7 +67,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--eval_source", default=EVAL_SOURCE)
     parser.add_argument("--benchmark_source", default=BENCHMARK_SOURCE)
     parser.add_argument("--output_dir", default=OUTPUT_DIR)
-    parser.add_argument("--model_name_or_path", default=MODEL_NAME_OR_PATH)
+    parser.add_argument("--model_name_or_path", "--model_path", default=MODEL_NAME_OR_PATH)
     parser.add_argument("--model_family", choices=["auto", "causal", "seq2seq"], default=MODEL_FAMILY)
     parser.add_argument("--nproc_per_node", type=int, default=NPROC_PER_NODE)
     parser.add_argument("--top_k", type=int, default=TOP_K)
@@ -72,7 +80,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--per_device_eval_batch_size", type=int, default=PER_DEVICE_EVAL_BATCH_SIZE)
     parser.add_argument("--gradient_accumulation_steps", type=int, default=GRADIENT_ACCUMULATION_STEPS)
     parser.add_argument("--learning_rate", type=float, default=LEARNING_RATE)
-    parser.add_argument("--num_train_epochs", type=float, default=NUM_TRAIN_EPOCHS)
+    parser.add_argument("--num_train_epochs", "--epochs", type=float, default=NUM_TRAIN_EPOCHS)
     parser.add_argument("--max_steps", type=int, default=MAX_STEPS)
     parser.add_argument("--prompt_field", default=PROMPT_FIELD)
     parser.add_argument("--response_field", default=RESPONSE_FIELD)

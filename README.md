@@ -87,10 +87,12 @@ Run 8-GPU SFT with top-1 and top-5 eval:
 1. Edit these constants at the top of `scripts/run_chatlm_8gpu_sft.py`:
 
 ```python
+MODEL_NAME_OR_PATH = "charent/ChatLM-mini-Chinese"
 TRAIN_SOURCE = "data/sft.jsonl"
 EVAL_SOURCE = "data/eval.jsonl"
 BENCHMARK_SOURCE = "data/benchmark.jsonl"
 OUTPUT_DIR = "runs/chatlm-mini-8gpu-sft"
+NUM_TRAIN_EPOCHS = 3.0
 ```
 
 2. Launch training and evaluation:
@@ -115,10 +117,12 @@ You can also override the paths without editing the file:
 
 ```bash
 python scripts/run_chatlm_8gpu_sft.py \
+  --model_path charent/ChatLM-mini-Chinese \
   --train_source /path/to/sft.jsonl \
   --eval_source /path/to/eval.jsonl \
   --benchmark_source /path/to/benchmark.jsonl \
-  --output_dir runs/chatlm-mini-8gpu-sft
+  --output_dir runs/chatlm-mini-8gpu-sft \
+  --epochs 3
 ```
 
 Run contrastive anchor-only evaluation plus benchmark:
