@@ -46,7 +46,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             if stage_enabled(config, f"prune_{mode}", default=True):
                 run(build_prune_command(config, mode), root=root, env=env, dry_run=args.dry_run)
 
-    if args.stage in {"all", "prune", "summary"} and not args.dry_run:
+    if args.stage in {"all", "train", "prune", "summary"} and not args.dry_run:
         summary_path = write_combined_summary(config, modes)
         print(f"Wrote combined summary: {summary_path}")
     elif args.dry_run:

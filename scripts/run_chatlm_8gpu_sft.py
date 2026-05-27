@@ -233,7 +233,9 @@ def build_eval_command(
     prompt_field: str,
     response_field: str,
 ) -> list[str]:
-    output_path = Path(args.output_dir) / "generation_eval" / f"{name}_predictions.jsonl"
+    generation_dir = Path(args.output_dir) / "generation_eval"
+    output_path = generation_dir / f"{name}_predictions.jsonl"
+    metrics_path = generation_dir / f"{name}_metrics.json"
     script_path = Path(__file__).resolve().with_name("evaluate_exact.py")
     precision = resolve_precision(args)
     command = [
@@ -245,6 +247,8 @@ def build_eval_command(
         source,
         "--output_path",
         str(output_path),
+        "--metrics_path",
+        str(metrics_path),
         "--prompt_field",
         prompt_field,
         "--response_field",
@@ -308,11 +312,23 @@ def build_eval_commands(args: argparse.Namespace) -> list[list[str]]:
 def run(command: Sequence[str], *, capture_json: bool = False) -> dict[str, object] | None:
     print("Running:")
     print(" ".join(shlex.quote(part) for part in command))
-    if not capture_json:
-        subprocess.run(command, check=True)
-        return None
+    try:
+        if not capture_json:
+            subprocess.run(command, check=True)
+            return None
 
-    completed = subprocess.run(command, check=True, text=True, capture_output=True)
+        completed = subprocess.run(command, check=True, text=True, capture_output=True)
+    except subprocess.CalledProcessError as exc:
+        print(f"Command failed with exit status {exc.returncode}:", file=sys.stderr)
+        print(" ".join(shlex.quote(part) for part in command), file=sys.stderr)
+        if exc.stdout:
+            print("\n--- stdout ---", file=sys.stderr)
+            print(exc.stdout, file=sys.stderr, end="" if exc.stdout.endswith("\n") else "\n")
+        if exc.stderr:
+            print("\n--- stderr ---", file=sys.stderr)
+            print(exc.stderr, file=sys.stderr, end="" if exc.stderr.endswith("\n") else "\n")
+        raise
+
     if completed.stderr:
         print(completed.stderr, file=sys.stderr, end="")
     print(completed.stdout, end="")

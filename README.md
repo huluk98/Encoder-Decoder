@@ -164,7 +164,11 @@ This trains/evaluates regular SFT and contrastive SFT on 8 GPUs, then runs `magn
 ```text
 runs/chatlm-mini-full-8gpu-suite/
   sft/generation_eval/top1_top5_metrics.json
+  sft/generation_eval/eval_metrics.json
+  sft/generation_eval/benchmark_metrics.json
   contrastive/generation_eval/top1_top5_metrics.json
+  contrastive/generation_eval/anchor_metrics.json
+  contrastive/generation_eval/benchmark_metrics.json
   pruning/sft/METHOD/benchmark_metrics.json
   pruning/contrastive/METHOD/benchmark_metrics.json
   combined_summary.json
