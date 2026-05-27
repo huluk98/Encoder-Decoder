@@ -325,11 +325,32 @@ EVAL_SOURCE=data/eval.jsonl \
 BENCHMARK_SOURCE=data/benchmark.jsonl \
 OUTPUT_ROOT=runs/pruning_eval \
 MODEL_FAMILY=seq2seq \
+PRECISION=bf16 \
 TOP_K=5 \
 bash scripts/run_pruning_eval.sh
 ```
 
-The script runs `magnitude`, `gradient`, `nvidia`, and `wanda`, then prints a summary table:
+The script runs the four CMC-style methods you provided:
+
+- `magnitude`: matches `magnitude (1).py`, using per-layer `abs(weight)` scores.
+- `gradient`: matches `gradient (1).py`, using Taylor scores `abs(weight * gradient)` on calibration examples.
+- `nvidia`: matches `nvidia (1).py`, using strict NVIDIA 2:4 pruning.
+- `wanda`: matches `wanda.py`, using `abs(weight) * activation_norm` and row-wise pruning.
+
+Set `PRECISION=fp16` if the checkpoint should load in float16 instead of bf16. If your JSON fields are not named `prompt` and `response`, add `PROMPT_FIELD=...` and `RESPONSE_FIELD=...`. For example:
+
+```bash
+MODEL_PATH=/path/to/t5-or-chatlm-sft \
+CALIBRATION_SOURCE=/path/to/sft.jsonl \
+EVAL_SOURCE=/path/to/eval.jsonl \
+BENCHMARK_SOURCE=/path/to/benchmark.jsonl \
+PROMPT_FIELD=instruction \
+RESPONSE_FIELD=output \
+PRECISION=fp16 \
+bash scripts/run_pruning_eval.sh
+```
+
+It prints a summary table:
 
 ```text
 method    split       top1_exact    exact@5    total

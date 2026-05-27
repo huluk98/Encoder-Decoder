@@ -9,10 +9,17 @@ BENCHMARK_SOURCE="${BENCHMARK_SOURCE:-data/benchmark.jsonl}"
 OUTPUT_ROOT="${OUTPUT_ROOT:-runs/pruning_eval}"
 
 MODEL_FAMILY="${MODEL_FAMILY:-seq2seq}"
+PRECISION="${PRECISION:-bf16}"
 SPARSITY="${SPARSITY:-0.5}"
 TOP_K="${TOP_K:-5}"
 MAX_NEW_TOKENS="${MAX_NEW_TOKENS:-256}"
 MAX_INPUT_LENGTH="${MAX_INPUT_LENGTH:-256}"
+MAX_SEQ_LENGTH="${MAX_SEQ_LENGTH:-1024}"
+SOURCE_MAX_LENGTH="${SOURCE_MAX_LENGTH:-768}"
+TARGET_MAX_LENGTH="${TARGET_MAX_LENGTH:-256}"
+CALIBRATION_LIMIT="${CALIBRATION_LIMIT:-128}"
+PROMPT_FIELD="${PROMPT_FIELD:-prompt}"
+RESPONSE_FIELD="${RESPONSE_FIELD:-response}"
 TRUST_REMOTE_CODE="${TRUST_REMOTE_CODE:-1}"
 METHODS="${METHODS:-magnitude gradient nvidia wanda}"
 
@@ -23,6 +30,25 @@ trust_args=()
 if [[ "${TRUST_REMOTE_CODE}" == "1" ]]; then
   trust_args+=(--trust_remote_code)
 fi
+
+case "${PRECISION}" in
+  bf16)
+    TORCH_DTYPE="bfloat16"
+    ;;
+  fp16)
+    TORCH_DTYPE="float16"
+    ;;
+  fp32)
+    TORCH_DTYPE="float32"
+    ;;
+  auto)
+    TORCH_DTYPE="auto"
+    ;;
+  *)
+    echo "Unknown PRECISION='${PRECISION}'. Use bf16, fp16, fp32, or auto." >&2
+    exit 2
+    ;;
+esac
 
 mkdir -p "${OUTPUT_ROOT}"
 
@@ -35,28 +61,40 @@ run_prune() {
   echo "==> Pruning method: ${method}"
   case "${method}" in
     magnitude)
+      # Same as magnitude (1).py: per-layer abs(weight), prune the lowest 50%.
       python "${SCRIPT_DIR}/prune.py" \
         --model_name_or_path "${MODEL_PATH}" \
         --model_family "${MODEL_FAMILY}" \
+        --torch_dtype "${TORCH_DTYPE}" \
         "${trust_args[@]}" \
         --method magnitude \
         --sparsity "${SPARSITY}" \
         --output_dir "${pruned_dir}"
       ;;
     gradient)
+      # Same as gradient (1).py: Taylor score abs(weight * gradient) on calibration records.
       python "${SCRIPT_DIR}/prune.py" \
         --model_name_or_path "${MODEL_PATH}" \
         --model_family "${MODEL_FAMILY}" \
+        --torch_dtype "${TORCH_DTYPE}" \
         "${trust_args[@]}" \
         --method gradient \
         --sparsity "${SPARSITY}" \
         --calibration_source "${CALIBRATION_SOURCE}" \
+        --calibration_limit "${CALIBRATION_LIMIT}" \
+        --prompt_field "${PROMPT_FIELD}" \
+        --response_field "${RESPONSE_FIELD}" \
+        --max_seq_length "${MAX_SEQ_LENGTH}" \
+        --source_max_length "${SOURCE_MAX_LENGTH}" \
+        --target_max_length "${TARGET_MAX_LENGTH}" \
         --output_dir "${pruned_dir}"
       ;;
     nvidia)
+      # Same as nvidia (1).py: strict 2:4, zero the two smallest values per group of four.
       python "${SCRIPT_DIR}/prune.py" \
         --model_name_or_path "${MODEL_PATH}" \
         --model_family "${MODEL_FAMILY}" \
+        --torch_dtype "${TORCH_DTYPE}" \
         "${trust_args[@]}" \
         --method nvidia \
         --nvidia_keep_n 2 \
@@ -64,13 +102,21 @@ run_prune() {
         --output_dir "${pruned_dir}"
       ;;
     wanda)
+      # Same as wanda.py: abs(weight) * activation_norm, pruned row-wise at 50%.
       python "${SCRIPT_DIR}/prune.py" \
         --model_name_or_path "${MODEL_PATH}" \
         --model_family "${MODEL_FAMILY}" \
+        --torch_dtype "${TORCH_DTYPE}" \
         "${trust_args[@]}" \
         --method wanda \
         --sparsity "${SPARSITY}" \
         --calibration_source "${CALIBRATION_SOURCE}" \
+        --calibration_limit "${CALIBRATION_LIMIT}" \
+        --prompt_field "${PROMPT_FIELD}" \
+        --response_field "${RESPONSE_FIELD}" \
+        --max_seq_length "${MAX_SEQ_LENGTH}" \
+        --source_max_length "${SOURCE_MAX_LENGTH}" \
+        --target_max_length "${TARGET_MAX_LENGTH}" \
         --output_dir "${pruned_dir}"
       ;;
     *)
@@ -94,7 +140,10 @@ run_eval() {
     --output_path "${method_dir}/${split_name}_predictions.jsonl" \
     --metrics_path "${method_dir}/${split_name}_metrics.json" \
     --model_family "${MODEL_FAMILY}" \
+    --torch_dtype "${TORCH_DTYPE}" \
     "${trust_args[@]}" \
+    --prompt_field "${PROMPT_FIELD}" \
+    --response_field "${RESPONSE_FIELD}" \
     --max_input_length "${MAX_INPUT_LENGTH}" \
     --max_new_tokens "${MAX_NEW_TOKENS}" \
     --top_k "${TOP_K}" \

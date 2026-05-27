@@ -3,7 +3,13 @@
 Copy and paste this prompt when you want another model or code reviewer to check that decoder-only pruning matches the working CMC/T5 scripts.
 
 ```text
-I have working CMC/T5 pruning scripts for magnitude, gradient/Taylor, NVIDIA 2:4, and WANDA pruning. Please adapt/check my decoder-only Hugging Face pruning code so it matches the same vanilla methods at 50% sparsity.
+I have working CMC/T5 pruning scripts for four methods:
+- `magnitude (1).py`: per-layer magnitude pruning.
+- `gradient (1).py`: gradient/Taylor pruning.
+- `nvidia (1).py`: NVIDIA 2:4 structured pruning.
+- `wanda.py`: WANDA activation-aware pruning.
+
+Please adapt/check my decoder-only Hugging Face pruning code so it matches these same vanilla methods at 50% sparsity.
 
 Target model type:
 - Decoder-only causal LM, loaded with AutoModelForCausalLM.
