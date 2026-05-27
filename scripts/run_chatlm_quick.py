@@ -11,6 +11,7 @@ from typing import Sequence
 
 DEFAULT_MODEL = "charent/ChatLM-mini-Chinese"
 REQUIRED_MODULES = ("accelerate", "datasets", "torch", "transformers")
+DEFAULT_PRECISION = "bf16"
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -42,6 +43,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--output_dir", help="Output directory. Defaults under runs/.")
     parser.add_argument("--model_name_or_path", default=DEFAULT_MODEL)
     parser.add_argument("--model_family", choices=["auto", "causal", "seq2seq"], default="seq2seq")
+    parser.add_argument("--precision", choices=["bf16", "fp16", "fp32"], default=DEFAULT_PRECISION)
     parser.add_argument("--prompt_field", default="prompt")
     parser.add_argument("--response_field", default="response")
     parser.add_argument("--anchor_field", default="anchor")
@@ -70,8 +72,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--save_steps", type=int, default=200)
     parser.add_argument("--eval_steps", type=int, default=200)
     parser.add_argument("--generation_eval_limit", type=int)
-    parser.add_argument("--bf16", action="store_true")
-    parser.add_argument("--fp16", action="store_true")
+    parser.add_argument("--bf16", action="store_true", help="Compatibility alias for --precision bf16.")
+    parser.add_argument("--fp16", action="store_true", help="Compatibility alias for --precision fp16.")
     parser.add_argument("--gradient_checkpointing", action="store_true")
     parser.add_argument(
         "--no_trust_remote_code",
@@ -114,6 +116,7 @@ def print_dependency_help(missing: Sequence[str]) -> None:
 def build_command(args: argparse.Namespace) -> list[str]:
     script_path = Path(__file__).resolve().with_name("sft.py")
     output_dir = args.output_dir or f"runs/chatlm-mini-{args.mode}"
+    precision = resolve_precision(args)
 
     command = [
         sys.executable,
@@ -126,6 +129,8 @@ def build_command(args: argparse.Namespace) -> list[str]:
         output_dir,
         "--model_family",
         args.model_family,
+        "--torch_dtype",
+        torch_dtype_for_precision(precision),
         "--prompt_field",
         args.prompt_field,
         "--response_field",
@@ -164,9 +169,9 @@ def build_command(args: argparse.Namespace) -> list[str]:
         command.append("--trust_remote_code")
     if args.train_split:
         command.extend(["--train_split", args.train_split])
-    if args.bf16:
+    if precision == "bf16":
         command.append("--bf16")
-    if args.fp16:
+    elif precision == "fp16":
         command.append("--fp16")
     if args.gradient_checkpointing:
         command.append("--gradient_checkpointing")
@@ -198,6 +203,22 @@ def build_command(args: argparse.Namespace) -> list[str]:
 
     command.extend(args.extra)
     return command
+
+
+def resolve_precision(args: argparse.Namespace) -> str:
+    if args.fp16:
+        return "fp16"
+    if args.bf16:
+        return "bf16"
+    return args.precision
+
+
+def torch_dtype_for_precision(precision: str) -> str:
+    if precision == "bf16":
+        return "bfloat16"
+    if precision == "fp16":
+        return "float16"
+    return "float32"
 
 
 def main(argv: Sequence[str] | None = None) -> int:

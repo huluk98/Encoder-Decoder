@@ -29,6 +29,7 @@ NUM_TRAIN_EPOCHS = 3.0
 # ChatLM-mini/T5-style defaults.
 MODEL_FAMILY = "seq2seq"
 TRUST_REMOTE_CODE = True
+PRECISION = "bf16"  # Use "bf16", "fp16", or "fp32".
 
 # 8-GPU and training defaults.
 NPROC_PER_NODE = 8
@@ -37,8 +38,6 @@ PER_DEVICE_EVAL_BATCH_SIZE = 1
 GRADIENT_ACCUMULATION_STEPS = 8
 LEARNING_RATE = 5e-5
 MAX_STEPS = -1
-BF16 = True
-FP16 = False
 GRADIENT_CHECKPOINTING = True
 
 # Sequence and generation defaults.
@@ -69,6 +68,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--output_dir", default=OUTPUT_DIR)
     parser.add_argument("--model_name_or_path", "--model_path", default=MODEL_NAME_OR_PATH)
     parser.add_argument("--model_family", choices=["auto", "causal", "seq2seq"], default=MODEL_FAMILY)
+    parser.add_argument("--precision", choices=["bf16", "fp16", "fp32"], default=PRECISION)
     parser.add_argument("--nproc_per_node", type=int, default=NPROC_PER_NODE)
     parser.add_argument("--top_k", type=int, default=TOP_K)
     parser.add_argument("--num_beams", type=int, default=NUM_BEAMS)
@@ -88,8 +88,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--skip_train", action="store_true")
     parser.add_argument("--skip_eval", action="store_true")
     parser.add_argument("--dry_run", action="store_true")
-    parser.add_argument("--no_bf16", action="store_true")
-    parser.add_argument("--fp16", action="store_true", default=FP16)
+    parser.add_argument("--no_bf16", action="store_true", help="Compatibility alias for --precision fp32.")
+    parser.add_argument("--fp16", action="store_true", help="Compatibility alias for --precision fp16.")
     parser.add_argument("--no_gradient_checkpointing", action="store_true")
     parser.add_argument("--no_trust_remote_code", action="store_true")
     return parser.parse_args(argv)
@@ -120,6 +120,7 @@ def print_dependency_help(missing: Sequence[str]) -> None:
 
 def build_train_command(args: argparse.Namespace) -> list[str]:
     script_path = Path(__file__).resolve().with_name("sft.py")
+    precision = resolve_precision(args)
     command = [
         sys.executable,
         "-m",
@@ -137,6 +138,8 @@ def build_train_command(args: argparse.Namespace) -> list[str]:
         args.output_dir,
         "--model_family",
         args.model_family,
+        "--torch_dtype",
+        torch_dtype_for_precision(precision),
         "--prompt_field",
         args.prompt_field,
         "--response_field",
@@ -164,13 +167,29 @@ def build_train_command(args: argparse.Namespace) -> list[str]:
     ]
     if TRUST_REMOTE_CODE and not args.no_trust_remote_code:
         command.append("--trust_remote_code")
-    if BF16 and not args.no_bf16:
+    if precision == "bf16":
         command.append("--bf16")
-    if args.fp16:
+    elif precision == "fp16":
         command.append("--fp16")
     if GRADIENT_CHECKPOINTING and not args.no_gradient_checkpointing:
         command.append("--gradient_checkpointing")
     return command
+
+
+def resolve_precision(args: argparse.Namespace) -> str:
+    if args.fp16:
+        return "fp16"
+    if args.no_bf16 and args.precision == "bf16":
+        return "fp32"
+    return args.precision
+
+
+def torch_dtype_for_precision(precision: str) -> str:
+    if precision == "bf16":
+        return "bfloat16"
+    if precision == "fp16":
+        return "float16"
+    return "float32"
 
 
 def build_eval_command(
@@ -181,6 +200,7 @@ def build_eval_command(
 ) -> list[str]:
     output_path = Path(args.output_dir) / "generation_eval" / f"{name}_predictions.jsonl"
     script_path = Path(__file__).resolve().with_name("evaluate_exact.py")
+    precision = resolve_precision(args)
     command = [
         sys.executable,
         str(script_path),
@@ -196,6 +216,8 @@ def build_eval_command(
         args.response_field,
         "--model_family",
         args.model_family,
+        "--torch_dtype",
+        torch_dtype_for_precision(precision),
         "--max_input_length",
         str(args.source_max_length),
         "--max_new_tokens",

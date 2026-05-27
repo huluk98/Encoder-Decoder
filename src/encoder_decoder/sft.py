@@ -38,6 +38,7 @@ class SFTConfig:
     anchor_response_field: str = "response"
     model_family: ModelFamily = "auto"
     trust_remote_code: bool = False
+    torch_dtype: str | None = "auto"
     max_seq_length: int = 1024
     source_max_length: int = 768
     target_max_length: int = 256
@@ -69,11 +70,12 @@ class SFTConfig:
 
 def train_sft(config: SFTConfig) -> dict[str, float]:
     from datasets import Dataset
-    from transformers import DataCollatorForSeq2Seq, Trainer, TrainingArguments
+    from transformers import DataCollatorForSeq2Seq, Trainer
 
     model, tokenizer, resolved_family = load_tokenizer_and_model(
         config.model_name_or_path,
         model_family=config.model_family,
+        torch_dtype=config.torch_dtype,
         trust_remote_code=config.trust_remote_code,
     )
     tokenizer.padding_side = "right"
@@ -141,14 +143,19 @@ def train_sft(config: SFTConfig) -> dict[str, float]:
     )
     training_args = _build_training_args(config, eval_enabled=tokenized_eval is not None)
 
-    trainer = Trainer(
-        model=model,
-        args=training_args,
-        train_dataset=tokenized_train,
-        eval_dataset=tokenized_eval,
-        data_collator=data_collator,
-        tokenizer=tokenizer,
-    )
+    trainer_kwargs = {
+        "model": model,
+        "args": training_args,
+        "train_dataset": tokenized_train,
+        "eval_dataset": tokenized_eval,
+        "data_collator": data_collator,
+    }
+    trainer_signature = inspect.signature(Trainer.__init__)
+    if "processing_class" in trainer_signature.parameters:
+        trainer_kwargs["processing_class"] = tokenizer
+    else:
+        trainer_kwargs["tokenizer"] = tokenizer
+    trainer = Trainer(**trainer_kwargs)
     train_result = trainer.train(resume_from_checkpoint=config.resume_from_checkpoint)
     trainer.save_model(config.output_dir)
     if trainer.is_world_process_zero():
@@ -247,6 +254,7 @@ def _run_generation_evals(config: SFTConfig) -> dict[str, float]:
                 response_field=response_field,
                 model_family=config.model_family,
                 trust_remote_code=config.trust_remote_code,
+                torch_dtype=config.torch_dtype,
                 max_input_length=config.source_max_length,
                 max_new_tokens=config.generation_eval_max_new_tokens,
                 top_k=config.generation_eval_top_k,
@@ -319,6 +327,7 @@ def parse_args(argv: Sequence[str] | None = None) -> SFTConfig:
     parser.add_argument("--anchor_response_field", default="response")
     parser.add_argument("--model_family", choices=["auto", "causal", "seq2seq"], default="auto")
     parser.add_argument("--trust_remote_code", action="store_true")
+    parser.add_argument("--torch_dtype", default="auto")
     parser.add_argument("--max_seq_length", type=int, default=1024)
     parser.add_argument("--source_max_length", type=int, default=768)
     parser.add_argument("--target_max_length", type=int, default=256)

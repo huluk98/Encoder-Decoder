@@ -78,6 +78,6 @@ def tokenize_seq2seq_prompt_response(
                 max_length=target_max_length,
             )
 
+    model_inputs.pop("token_type_ids", None)
     model_inputs["labels"] = labels["input_ids"]
     return model_inputs
-

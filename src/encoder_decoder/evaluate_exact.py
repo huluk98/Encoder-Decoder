@@ -189,6 +189,7 @@ def _generate_candidates(
             truncation=True,
             max_length=max_input_length,
         )
+        inputs.pop("token_type_ids", None)
         inputs = {key: value.to(device) for key, value in inputs.items()}
         with torch.no_grad():
             output_ids = model.generate(**inputs, **generate_kwargs)
@@ -202,6 +203,7 @@ def _generate_candidates(
         truncation=True,
         max_length=max_input_length,
     )
+    inputs.pop("token_type_ids", None)
     inputs = {key: value.to(device) for key, value in inputs.items()}
     input_length = inputs["input_ids"].shape[-1]
     if tokenizer.pad_token_id is not None:

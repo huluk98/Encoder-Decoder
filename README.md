@@ -93,6 +93,7 @@ EVAL_SOURCE = "data/eval.jsonl"
 BENCHMARK_SOURCE = "data/benchmark.jsonl"
 OUTPUT_DIR = "runs/chatlm-mini-8gpu-sft"
 NUM_TRAIN_EPOCHS = 3.0
+PRECISION = "bf16"  # use "bf16", "fp16", or "fp32"
 ```
 
 2. Launch training and evaluation:
@@ -122,8 +123,11 @@ python scripts/run_chatlm_8gpu_sft.py \
   --eval_source /path/to/eval.jsonl \
   --benchmark_source /path/to/benchmark.jsonl \
   --output_dir runs/chatlm-mini-8gpu-sft \
-  --epochs 3
+  --epochs 3 \
+  --precision bf16
 ```
+
+Use `--precision fp16` instead if your GPUs/checkpoint run better in float16.
 
 Run contrastive anchor-only evaluation plus benchmark:
 
