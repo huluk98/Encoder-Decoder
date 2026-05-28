@@ -57,8 +57,8 @@ RESPONSE_KEY = None
 BENCHMARK_PROMPT_KEY = None
 BENCHMARK_RESPONSE_KEY = None
 
-# Per-GPU batch size. On 8 NVIDIA H20 GPUs with ~143771 MiB each, this gives
-# an effective eval batch of 2048 prompts before beam expansion.
+# Per-GPU batch size. With GPUs 4,5,6,7 on H20 cards, this gives an effective
+# eval batch of 1024 prompts before beam expansion.
 BATCH_SIZE = 256
 MIN_BATCH_SIZE = 1
 TOP_K = 5
@@ -71,7 +71,8 @@ DEVICE = None  # None uses cuda if available, otherwise cpu.
 FP16 = True
 MODEL_LOAD_MODE = "auto"  # auto, direct, or base_then_weights
 USE_8_GPUS = True
-NPROC_PER_NODE = 8
+CUDA_VISIBLE_DEVICES = "4,5,6,7"
+NPROC_PER_NODE = 4
 MASTER_PORT = "29573"
 
 
@@ -355,6 +356,12 @@ def cuda_device_count() -> int:
     return torch.cuda.device_count() if torch.cuda.is_available() else 0
 
 
+def parse_cuda_visible_devices(value: str | None) -> list[str]:
+    if not value:
+        return []
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
 def is_cuda_oom(exc: BaseException) -> bool:
     name = exc.__class__.__name__.lower()
     text = str(exc).lower()
@@ -379,8 +386,14 @@ def should_relaunch_distributed(args: argparse.Namespace) -> bool:
 
 
 def relaunch_with_torchrun(args: argparse.Namespace) -> int:
+    visible_devices = parse_cuda_visible_devices(args.cuda_visible_devices)
     available_gpus = cuda_device_count()
+    if visible_devices:
+        available_gpus = min(available_gpus, len(visible_devices))
     nproc = min(args.nproc_per_node, available_gpus)
+    if nproc < 1:
+        print("No CUDA GPUs are available for distributed eval.", file=sys.stderr)
+        return 2
     script_path = Path(__file__).resolve()
     cmd = [
         sys.executable,
@@ -398,7 +411,10 @@ def relaunch_with_torchrun(args: argparse.Namespace) -> int:
     env.setdefault("TOKENIZERS_PARALLELISM", "false")
     env.setdefault("NCCL_DEBUG", "WARN")
     env.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
-    print(f"Launching distributed eval on {nproc} GPUs:")
+    if args.cuda_visible_devices:
+        env["CUDA_VISIBLE_DEVICES"] = str(args.cuda_visible_devices)
+    visible_text = env.get("CUDA_VISIBLE_DEVICES", "all visible CUDA devices")
+    print(f"Launching distributed eval on {nproc} GPUs; CUDA_VISIBLE_DEVICES={visible_text}")
     print(" ".join(str(part) for part in cmd))
     return subprocess.run(cmd, env=env, check=False).returncode
 
@@ -924,6 +940,7 @@ def run_chatlm_eval(
             "rank": rank,
             "local_rank": int(dist_ctx["local_rank"]),
             "world_size": world_size,
+            "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
         },
     }
 
@@ -1040,6 +1057,7 @@ def main() -> int:
     parser.add_argument("--use_8_gpus", dest="use_8_gpus", action="store_true")
     parser.add_argument("--no_8_gpus", dest="use_8_gpus", action="store_false")
     parser.set_defaults(use_8_gpus=USE_8_GPUS)
+    parser.add_argument("--cuda_visible_devices", default=CUDA_VISIBLE_DEVICES)
     parser.add_argument("--nproc_per_node", type=int, default=NPROC_PER_NODE)
     parser.add_argument("--master_port", default=MASTER_PORT)
     parser.add_argument("--distributed_worker", action="store_true", help=argparse.SUPPRESS)

@@ -362,14 +362,15 @@ EVAL_FILE = "/Users/luke/Documents/SCENIC agent/data/SCENIC_full_training_datase
 BENCHMARK_FILE = "/Users/luke/Documents/SCENIC agent/generated/iot_instruction_benchmark_200.json"
 OUTPUT_DIR = "/Users/luke/Documents/Encoder-Decoder/runs/eval/chatlm-eos"
 USE_8_GPUS = True
-NPROC_PER_NODE = 8
-BATCH_SIZE = 256  # per GPU on H20; effective 2048 prompts across 8 GPUs
+CUDA_VISIBLE_DEVICES = "4,5,6,7"
+NPROC_PER_NODE = 4
+BATCH_SIZE = 256  # per GPU on H20; effective 1024 prompts across GPUs 4-7
 MIN_BATCH_SIZE = 1  # fallback if a long batch causes CUDA OOM
 ```
 
 If your local checkpoint says it cannot find `modeling_chat_model.py`, keep `BASE_MODEL_PATH = "charent/ChatLM-mini-Chinese"`. The script will load the custom ChatLM architecture from that base model and then apply the weights from `MODEL_PATH`, so the checkpoint folder itself does not need to contain `modeling_chat_model.py`. If the machine has no internet, set `BASE_MODEL_PATH` to a local copy of `charent/ChatLM-mini-Chinese` that contains the custom code files.
 
-With `USE_8_GPUS = True`, a normal `python scripts/eval_chatlm_eos.py` relaunches itself with `torchrun --nproc_per_node 8`, splits eval rows across the GPUs, and merges predictions/metrics into `OUTPUT_DIR/summary.json`. Use `--no_8_gpus` to force single-GPU evaluation.
+With `USE_8_GPUS = True`, a normal `python scripts/eval_chatlm_eos.py` relaunches itself with `CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun --nproc_per_node 4`, splits eval rows across those GPUs, and merges predictions/metrics into `OUTPUT_DIR/summary.json`. Use `--no_8_gpus` to force single-GPU evaluation.
 
 You can still override any path from the command line:
 

@@ -79,6 +79,10 @@ def test_normalize_text_strips_trailing_textual_eos() -> None:
     assert eval_chatlm_eos.normalize_text(" answer [EOS] [EOS] ") == "answer"
 
 
+def test_parse_cuda_visible_devices() -> None:
+    assert eval_chatlm_eos.parse_cuda_visible_devices("4,5, 6,7") == ["4", "5", "6", "7"]
+
+
 def test_evaluate_file_shards_examples_by_rank(tmp_path, monkeypatch) -> None:
     path = tmp_path / "eval.jsonl"
     with path.open("w", encoding="utf-8") as handle:
