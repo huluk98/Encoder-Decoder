@@ -315,10 +315,14 @@ def write_summary(args: argparse.Namespace, results: dict[str, dict[str, object]
             f"top_{args.top_k}_correct": metrics[f"top_{args.top_k}_correct"],
             f"top_{args.top_k}_accuracy": metrics[f"top_{args.top_k}_accuracy"],
         }
-    path = Path(args.output_dir) / "generation_eval" / "top1_top5_metrics.json"
+    path = Path(args.output_dir) / "generation_eval" / summary_metrics_filename(args.top_k)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(summary, indent=2, sort_keys=True), encoding="utf-8")
     print(f"Wrote {path}")
+
+
+def summary_metrics_filename(top_k: int) -> str:
+    return f"top1_top{top_k}_metrics.json"
 
 
 def main(argv: Sequence[str] | None = None) -> int:

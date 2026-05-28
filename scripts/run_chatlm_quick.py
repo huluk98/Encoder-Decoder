@@ -54,6 +54,10 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--anchor_response_field", default="response")
     parser.add_argument("--contrastive_positive_field", default="positive")
     parser.add_argument("--contrastive_negative_field", default="negative")
+    parser.add_argument(
+        "--contrastive_response_field",
+        help="Response field in contrastive training data. Defaults to --response_field.",
+    )
     parser.add_argument("--contrastive_loss_weight", type=float, default=0.2)
     parser.add_argument("--contrastive_margin", type=float, default=0.2)
     parser.add_argument("--train_split")
@@ -195,6 +199,7 @@ def build_command(args: argparse.Namespace) -> list[str]:
         if args.sft_eval_split:
             command.extend(["--sft_eval_split", args.sft_eval_split])
     else:
+        contrastive_response_field = args.contrastive_response_field or args.response_field
         command.extend(
             [
                 "--training_mode",
@@ -206,7 +211,7 @@ def build_command(args: argparse.Namespace) -> list[str]:
                 "--contrastive_negative_field",
                 args.contrastive_negative_field,
                 "--contrastive_response_field",
-                args.anchor_response_field,
+                contrastive_response_field,
                 "--contrastive_loss_weight",
                 str(args.contrastive_loss_weight),
                 "--contrastive_margin",
@@ -219,6 +224,14 @@ def build_command(args: argparse.Namespace) -> list[str]:
                 args.anchor_response_field,
             ]
         )
+        if args.sft_eval_source:
+            command.extend(["--sft_eval_source", args.sft_eval_source])
+            if args.sft_eval_prompt_field:
+                command.extend(["--sft_eval_prompt_field", args.sft_eval_prompt_field])
+            if args.sft_eval_response_field:
+                command.extend(["--sft_eval_response_field", args.sft_eval_response_field])
+            if args.sft_eval_split:
+                command.extend(["--sft_eval_split", args.sft_eval_split])
         if args.anchor_eval_split:
             command.extend(["--anchor_eval_split", args.anchor_eval_split])
 

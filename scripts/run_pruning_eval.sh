@@ -185,13 +185,7 @@ for method in methods:
         if not metrics_path.exists():
             continue
         metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
-        topk_key = next(
-            key
-            for key in metrics
-            if key.startswith("top_")
-            and key.endswith("_accuracy")
-            and key != "top_1_accuracy"
-        )
+        topk_key = f"top_{top_k}_accuracy"
         print(
             f"{method}\t {split}\t "
             f"{metrics['top_1_accuracy']:.6f}\t "

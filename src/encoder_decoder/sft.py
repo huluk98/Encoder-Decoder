@@ -212,7 +212,7 @@ def train_sft(config: SFTConfig) -> dict[str, float]:
         if trainer.is_world_process_zero():
             trainer.log_metrics("eval", eval_metrics)
             trainer.save_metrics("eval", eval_metrics)
-        metrics.update({f"eval_{key}": value for key, value in eval_metrics.items()})
+        metrics.update(eval_metrics)
     if _has_generation_evals(config):
         if hasattr(trainer, "accelerator"):
             trainer.accelerator.wait_for_everyone()

@@ -5,7 +5,7 @@ import json
 import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Sequence
 
 from encoder_decoder.data import PromptResponseRecord, load_prompt_response_records
 from encoder_decoder.modeling import ModelFamily, load_tokenizer_and_model

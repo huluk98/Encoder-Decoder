@@ -2,10 +2,6 @@ from __future__ import annotations
 
 import pytest
 
-torch = pytest.importorskip("torch")
-
-from torch import nn
-
 from encoder_decoder.data import PromptResponseRecord
 from encoder_decoder.pruning import (
     magnitude_prune_model,
@@ -13,6 +9,9 @@ from encoder_decoder.pruning import (
     summarize_linear_sparsity,
     wanda_prune_model,
 )
+
+torch = pytest.importorskip("torch")
+nn = torch.nn
 
 
 def test_magnitude_pruning_zeros_lowest_weights() -> None:

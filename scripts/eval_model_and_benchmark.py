@@ -187,9 +187,14 @@ def print_dry_run(args: argparse.Namespace) -> None:
 def write_summary(output_dir: Path, results: dict[str, ExactEvalResult]) -> None:
     summary = {name: metrics_payload(result) for name, result in results.items()}
     output_dir.mkdir(parents=True, exist_ok=True)
-    summary_path = output_dir / "top1_top5_metrics.json"
+    top_k = next(iter(results.values())).top_k if results else TOP_K
+    summary_path = output_dir / summary_metrics_filename(top_k)
     summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True), encoding="utf-8")
     print(f"Wrote {summary_path}")
+
+
+def summary_metrics_filename(top_k: int) -> str:
+    return f"top1_top{top_k}_metrics.json"
 
 
 def print_table(results: dict[str, ExactEvalResult], top_k: int) -> None:

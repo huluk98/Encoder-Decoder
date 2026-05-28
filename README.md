@@ -129,6 +129,39 @@ python scripts/train_sft_8gpu.py \
 
 Use `--precision fp16` instead if your GPUs/checkpoint run better in float16.
 
+Run the same one-command training/eval flow on physical GPUs `4,5,6,7`:
+
+```bash
+CUDA_VISIBLE_DEVICES=4,5,6,7 conda run -n encoder-decoder-prune \
+  python scripts/train_sft_8gpu.py \
+  --nproc_per_node 4 \
+  --model_path charent/ChatLM-mini-Chinese \
+  --train_source data/sft.jsonl \
+  --train_eval_source data/sft.jsonl \
+  --benchmark_source data/benchmark.jsonl \
+  --output_dir runs/chatlm-mini-4gpu-sft \
+  --epochs 3 \
+  --precision bf16
+```
+
+For contrastive SFT plus eval on physical GPUs `4,5,6,7`:
+
+```bash
+CUDA_VISIBLE_DEVICES=4,5,6,7 conda run -n encoder-decoder-prune \
+  python scripts/train_contrastive_8gpu.py \
+  --nproc_per_node 4 \
+  --model_path charent/ChatLM-mini-Chinese \
+  --contrastive_train_source "/Users/luke/Documents/SCENIC agent/data/SCENIC_full_anchor_positive_negative.json" \
+  --sft_train_eval_source data/sft.jsonl \
+  --benchmark_source data/benchmark.jsonl \
+  --output_dir runs/chatlm-mini-4gpu-contrastive \
+  --negative_field invalid_negative \
+  --epochs 3 \
+  --precision bf16
+```
+
+When `CUDA_VISIBLE_DEVICES=4,5,6,7` is set, those physical GPUs are exposed to the process as local CUDA devices `0,1,2,3`. Use `--nproc_per_node 4`, not `8`, when exposing four GPUs.
+
 Run 8-GPU contrastive SFT with top-1 and top-5 exact eval:
 
 1. Edit the path block at the top of [scripts/train_contrastive_8gpu.py](scripts/train_contrastive_8gpu.py):
@@ -288,11 +321,13 @@ Quick contrastive triplet run:
 ```bash
 python scripts/run_chatlm_quick.py \
   --train_source data/contrastive.jsonl \
+  --sft_eval_source data/sft.jsonl \
   --anchor_source data/contrastive.jsonl \
   --benchmark_source data/benchmark.jsonl \
   --output_dir runs/chatlm-mini-contrastive \
   --mode contrastive \
   --contrastive_negative_field invalid_negative \
+  --contrastive_response_field response \
   --top_k 5
 ```
 
@@ -343,7 +378,7 @@ python scripts/eval_model_and_benchmark.py \
   --top_k 5
 ```
 
-The wrapper writes `eval_metrics.json`, `benchmark_metrics.json`, prediction JSONL files, and `top1_top5_metrics.json` under `--output_dir`.
+The wrapper writes `eval_metrics.json`, `benchmark_metrics.json`, prediction JSONL files, and `top1_top{K}_metrics.json` under `--output_dir` (`top1_top5_metrics.json` with the default `--top_k 5`).
 
 Alternative ChatLM/T5-style evaluator with textual `[EOS]` prompt handling:
 
