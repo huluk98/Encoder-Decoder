@@ -82,25 +82,24 @@ python scripts/run_chatlm_quick.py \
   --top_k 5
 ```
 
-Run 8-GPU SFT with top-1 and top-5 eval:
+Run 8-GPU regular SFT with top-1 and top-5 exact eval:
 
-1. Edit these constants at the top of `scripts/run_chatlm_8gpu_sft.py`:
+1. Edit the path block at the top of [scripts/train_sft_8gpu.py](scripts/train_sft_8gpu.py):
 
 ```python
 MODEL_NAME_OR_PATH = "charent/ChatLM-mini-Chinese"
 TRAIN_SOURCE = "data/sft.jsonl"
-TRAINING_MODE = "sft"  # use "sft" or "contrastive"
-EVAL_SOURCE = "data/eval.jsonl"
+TRAIN_EVAL_SOURCE = TRAIN_SOURCE
 BENCHMARK_SOURCE = "data/benchmark.jsonl"
 OUTPUT_DIR = "runs/chatlm-mini-8gpu-sft"
 NUM_TRAIN_EPOCHS = 3.0
 PRECISION = "bf16"  # use "bf16", "fp16", or "fp32"
 ```
 
-2. Launch training and evaluation:
+2. Launch SFT training and evaluation:
 
 ```bash
-python scripts/run_chatlm_8gpu_sft.py
+python scripts/train_sft_8gpu.py
 ```
 
 3. Read the top-1/top-5 output:
@@ -112,16 +111,16 @@ cat runs/chatlm-mini-8gpu-sft/generation_eval/top1_top5_metrics.json
 For a quick command preview without launching:
 
 ```bash
-python scripts/run_chatlm_8gpu_sft.py --dry_run
+python scripts/train_sft_8gpu.py --dry_run
 ```
 
 You can also override the paths without editing the file:
 
 ```bash
-python scripts/run_chatlm_8gpu_sft.py \
+python scripts/train_sft_8gpu.py \
   --model_path charent/ChatLM-mini-Chinese \
   --train_source /path/to/sft.jsonl \
-  --eval_source /path/to/eval.jsonl \
+  --train_eval_source /path/to/sft.jsonl \
   --benchmark_source /path/to/benchmark.jsonl \
   --output_dir runs/chatlm-mini-8gpu-sft \
   --epochs 3 \
@@ -130,102 +129,50 @@ python scripts/run_chatlm_8gpu_sft.py \
 
 Use `--precision fp16` instead if your GPUs/checkpoint run better in float16.
 
-Run the full 8-GPU SFT + contrastive + pruning suite from one config file:
+Run 8-GPU contrastive SFT with top-1 and top-5 exact eval:
 
-1. Edit all paths in [configs/experiment_8gpu.yaml](configs/experiment_8gpu.yaml):
+1. Edit the path block at the top of [scripts/train_contrastive_8gpu.py](scripts/train_contrastive_8gpu.py):
 
-```yaml
-paths:
-  sft_train: "/Users/luke/Documents/SCENIC agent/data/SCENIC_full_anchor_positive_negative.json"
-  sft_eval: "/Users/luke/Documents/SCENIC agent/data/SCENIC_full_anchor_positive_negative.json"
-  contrastive_train: "/Users/luke/Documents/SCENIC agent/data/SCENIC_full_anchor_positive_negative.json"
-  anchor_eval: "/Users/luke/Documents/SCENIC agent/data/SCENIC_full_anchor_positive_negative.json"
-  benchmark: data/benchmark.jsonl
-  output_root: runs/chatlm-mini-full-8gpu-suite
+```python
+MODEL_NAME_OR_PATH = "charent/ChatLM-mini-Chinese"
+CONTRASTIVE_TRAIN_SOURCE = "/Users/luke/Documents/SCENIC agent/data/SCENIC_full_anchor_positive_negative.json"
+SFT_TRAIN_EVAL_SOURCE = "data/sft.jsonl"
+BENCHMARK_SOURCE = "data/benchmark.jsonl"
+OUTPUT_DIR = "runs/chatlm-mini-8gpu-contrastive"
+NEGATIVE_FIELD = "invalid_negative"
 ```
 
-2. Preview every command before launching:
+2. Launch contrastive training and evaluation:
 
 ```bash
-python scripts/run_8gpu_full_suite.py \
-  --config configs/experiment_8gpu.yaml \
-  --dry_run
+python scripts/train_contrastive_8gpu.py
 ```
 
-3. Run everything:
+3. Read the top-1/top-5 output:
 
 ```bash
-python scripts/run_8gpu_full_suite.py \
-  --config configs/experiment_8gpu.yaml
+cat runs/chatlm-mini-8gpu-contrastive/generation_eval/top1_top5_metrics.json
 ```
 
-This trains/evaluates regular SFT and contrastive SFT on 8 GPUs, then runs `magnitude`, `gradient`, `nvidia`, and `wanda` pruning for both checkpoints at 50% sparsity. The default config treats the full SCENIC training file as `anchor -> response` for regular SFT/full-train eval, uses `anchor/positive/invalid_negative -> response` for contrastive SFT, and keeps benchmark eval on `prompt -> response`. Outputs are grouped under `output_root`:
-
-```text
-runs/chatlm-mini-full-8gpu-suite/
-  sft/generation_eval/top1_top5_metrics.json
-  sft/generation_eval/eval_metrics.json
-  sft/generation_eval/benchmark_metrics.json
-  contrastive/generation_eval/top1_top5_metrics.json
-  contrastive/generation_eval/anchor_metrics.json
-  contrastive/generation_eval/benchmark_metrics.json
-  pruning/sft/METHOD/eval_metrics.json
-  pruning/sft/METHOD/benchmark_metrics.json
-  pruning/contrastive/METHOD/eval_metrics.json
-  pruning/contrastive/METHOD/benchmark_metrics.json
-  combined_summary.json
-  combined_summary.csv
-```
-
-To prune existing checkpoints without retraining, set `paths.sft_model_path` and/or `paths.contrastive_model_path` in the config, set `stages.train_sft: false` and `stages.train_contrastive: false`, then run:
+For a quick command preview:
 
 ```bash
-python scripts/run_8gpu_full_suite.py \
-  --config configs/experiment_8gpu.yaml \
-  --stage prune
+python scripts/train_contrastive_8gpu.py --dry_run
 ```
 
-The original CMC pruning files are also checked in under [reference_pruning_scripts](reference_pruning_scripts/) for comparison with the maintained configurable implementations.
+The contrastive script trains on `anchor`, `positive`, and `negative`/`invalid_negative`, then evaluates the trained model on the regular SFT training data and the benchmark. To use valid hard negatives instead of invalid compatibility negatives, set:
 
-For 8-GPU contrastive triplet SFT on the SCENIC anchor-positive-negative file:
-
-```bash
-python scripts/run_chatlm_8gpu_sft.py \
-  --training_mode contrastive \
-  --model_path charent/ChatLM-mini-Chinese \
-  --train_source "/path/to/SCENIC_full_anchor_positive_negative.json" \
-  --benchmark_source /path/to/benchmark.jsonl \
-  --output_dir runs/chatlm-mini-8gpu-contrastive \
-  --contrastive_negative_field invalid_negative \
-  --epochs 3 \
-  --precision bf16
+```python
+NEGATIVE_FIELD = "negative"
 ```
 
-Run contrastive triplet SFT plus anchor-only evaluation and benchmark:
-
-```bash
-python scripts/run_chatlm_quick.py \
-  --train_source data/SCENIC_full_anchor_positive_negative.json \
-  --anchor_source data/SCENIC_full_anchor_positive_negative.json \
-  --benchmark_source data/benchmark.jsonl \
-  --output_dir runs/chatlm-mini-contrastive \
-  --mode contrastive \
-  --model_family seq2seq \
-  --contrastive_negative_field invalid_negative \
-  --contrastive_loss_weight 0.2 \
-  --contrastive_margin 0.2 \
-  --num_train_epochs 3 \
-  --learning_rate 5e-5 \
-  --top_k 5
-```
-
-Contrastive mode follows compatibility-aware triplet SFT: it trains generation loss on both `anchor -> response` and `positive -> response`, then adds a triplet alignment loss that pulls the anchor representation toward `positive` and pushes it away from `negative`. The default negative column is `negative`; use `--contrastive_negative_field invalid_negative` when you want the invalid compatibility hard negative from the SCENIC file.
+Contrastive mode follows compatibility-aware triplet SFT: it trains generation loss on both `anchor -> response` and `positive -> response`, then adds a triplet alignment loss that pulls the anchor representation toward `positive` and pushes it away from `negative`. The direct script uses `NEGATIVE_FIELD = "invalid_negative"` by default; pass `--negative_field negative` if you want valid hard negatives instead.
 
 After each run, check:
 
 ```bash
-cat runs/chatlm-mini-sft/generation_eval/metrics.json
-ls runs/chatlm-mini-sft/generation_eval/
+cat runs/chatlm-mini-8gpu-sft/generation_eval/top1_top5_metrics.json
+cat runs/chatlm-mini-8gpu-contrastive/generation_eval/top1_top5_metrics.json
 ```
 
 ## Data Format
@@ -250,7 +197,7 @@ Contrastive triplet SFT expects anchor-positive-negative records. The SCENIC fil
 }
 ```
 
-Use `--contrastive_negative_field negative` for valid hard negatives with different responses, or `--contrastive_negative_field invalid_negative` for the invalid compatibility negative shown in the triplet algorithm.
+Use `--negative_field negative` in `scripts/train_contrastive_8gpu.py` for valid hard negatives with different responses, or `--negative_field invalid_negative` for the invalid compatibility negative shown in the triplet algorithm. The lower-level `encdec-sft` command exposes the same choice as `--contrastive_negative_field`.
 
 ## SFT
 
@@ -415,17 +362,41 @@ Every pruning run saves the pruned model, tokenizer, and `pruning_report.json` i
 
 The NVIDIA method follows the usual 2:4 constraint strictly: a linear layer is pruned only when its input dimension is divisible by the group size. Non-divisible layers are skipped instead of leaving a partial dense remainder.
 
-Run all four pruning methods and report exact match plus exact@5 on eval and benchmark:
+Run all four pruning methods after regular SFT and report exact match plus exact@5 on the SFT training data and benchmark:
 
 ```bash
 MODEL_PATH=runs/chatlm-mini-8gpu-sft \
 CALIBRATION_SOURCE=data/sft.jsonl \
-EVAL_SOURCE=data/eval.jsonl \
+EVAL_SOURCE=data/sft.jsonl \
 BENCHMARK_SOURCE=data/benchmark.jsonl \
-OUTPUT_ROOT=runs/pruning_eval \
+OUTPUT_ROOT=runs/pruning_eval/sft \
 MODEL_FAMILY=seq2seq \
 PRECISION=bf16 \
+SPARSITY=0.5 \
 TOP_K=5 \
+METHODS="magnitude gradient nvidia wanda" \
+bash scripts/run_pruning_eval.sh
+```
+
+Run the same four methods after contrastive SFT, calibrating WANDA/gradient on the contrastive anchors and evaluating on the regular SFT training data plus the benchmark:
+
+```bash
+MODEL_PATH=runs/chatlm-mini-8gpu-contrastive \
+CALIBRATION_SOURCE="/Users/luke/Documents/SCENIC agent/data/SCENIC_full_anchor_positive_negative.json" \
+CALIBRATION_PROMPT_FIELD=anchor \
+CALIBRATION_RESPONSE_FIELD=response \
+EVAL_SOURCE=data/sft.jsonl \
+EVAL_PROMPT_FIELD=prompt \
+EVAL_RESPONSE_FIELD=response \
+BENCHMARK_SOURCE=data/benchmark.jsonl \
+BENCHMARK_PROMPT_FIELD=prompt \
+BENCHMARK_RESPONSE_FIELD=response \
+OUTPUT_ROOT=runs/pruning_eval/contrastive \
+MODEL_FAMILY=seq2seq \
+PRECISION=bf16 \
+SPARSITY=0.5 \
+TOP_K=5 \
+METHODS="magnitude gradient nvidia wanda" \
 bash scripts/run_pruning_eval.sh
 ```
 
@@ -455,7 +426,7 @@ It prints a summary table:
 method    split       top1_exact    exact@5    total
 ```
 
-Full outputs are saved under `runs/pruning_eval/METHOD/`, including pruned models, prediction JSONL files, and metrics JSON files.
+Full outputs are saved under `runs/pruning_eval/sft/METHOD/` and `runs/pruning_eval/contrastive/METHOD/`, including pruned models, prediction JSONL files, `eval_metrics.json`, and `benchmark_metrics.json`.
 
 ## Local Scripts
 
