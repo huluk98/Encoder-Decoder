@@ -298,6 +298,38 @@ python scripts/run_chatlm_quick.py \
 
 ## Exact Evaluation
 
+Evaluate one saved model on a JSON/JSONL eval file and a benchmark file:
+
+```bash
+python scripts/eval_model_and_benchmark.py \
+  --model_path runs/chatlm-mini-8gpu-sft \
+  --eval_source data/sft.jsonl \
+  --benchmark_source data/benchmark.jsonl \
+  --output_dir runs/eval/chatlm-mini-8gpu-sft \
+  --model_family seq2seq \
+  --precision bf16 \
+  --top_k 5
+```
+
+If your eval file uses SCENIC anchor fields while the benchmark uses prompt fields:
+
+```bash
+python scripts/eval_model_and_benchmark.py \
+  --model_path runs/chatlm-mini-8gpu-contrastive \
+  --eval_source "/Users/luke/Documents/SCENIC agent/data/SCENIC_full_anchor_positive_negative.json" \
+  --eval_prompt_field anchor \
+  --eval_response_field response \
+  --benchmark_source data/benchmark.jsonl \
+  --benchmark_prompt_field prompt \
+  --benchmark_response_field response \
+  --output_dir runs/eval/chatlm-mini-8gpu-contrastive \
+  --model_family seq2seq \
+  --precision bf16 \
+  --top_k 5
+```
+
+The wrapper writes `eval_metrics.json`, `benchmark_metrics.json`, prediction JSONL files, and `top1_top5_metrics.json` under `--output_dir`.
+
 ```bash
 encdec-eval-exact \
   --model_name_or_path runs/chatlm-mini-sft \

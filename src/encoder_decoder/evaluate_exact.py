@@ -100,6 +100,23 @@ def evaluate_exact(config: ExactEvalConfig) -> ExactEvalResult:
     model.to(device)
     model.eval()
 
+    return evaluate_exact_with_model(
+        config,
+        model=model,
+        tokenizer=tokenizer,
+        resolved_family=resolved_family,
+        device=device,
+    )
+
+
+def evaluate_exact_with_model(
+    config: ExactEvalConfig,
+    *,
+    model,
+    tokenizer,
+    resolved_family: str,
+    device,
+) -> ExactEvalResult:
     records = load_prompt_response_records(
         config.eval_source,
         split=config.split,
