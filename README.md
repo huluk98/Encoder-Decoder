@@ -357,10 +357,13 @@ The defaults in that file are:
 
 ```python
 MODEL_PATH = "/Users/luke/Documents/Encoder-Decoder/runs/chatlm-mini-8gpu-sft"
+BASE_MODEL_PATH = "charent/ChatLM-mini-Chinese"
 EVAL_FILE = "/Users/luke/Documents/SCENIC agent/data/SCENIC_full_training_dataset.json"
 BENCHMARK_FILE = "/Users/luke/Documents/SCENIC agent/generated/iot_instruction_benchmark_200.json"
 OUTPUT_DIR = "/Users/luke/Documents/Encoder-Decoder/runs/eval/chatlm-eos"
 ```
+
+If your local checkpoint says it cannot find `modeling_chat_model.py`, keep `BASE_MODEL_PATH = "charent/ChatLM-mini-Chinese"`. The script will load the custom ChatLM architecture from that base model and then apply the weights from `MODEL_PATH`, so the checkpoint folder itself does not need to contain `modeling_chat_model.py`. If the machine has no internet, set `BASE_MODEL_PATH` to a local copy of `charent/ChatLM-mini-Chinese` that contains the custom code files.
 
 You can still override any path from the command line:
 

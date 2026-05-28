@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +31,7 @@ TOKENIZER_FILE_NAMES = (
 #   python scripts/eval_chatlm_eos.py
 # ---------------------------------------------------------------------------
 MODEL_PATH = "/Users/luke/Documents/Encoder-Decoder/runs/chatlm-mini-8gpu-sft"
+BASE_MODEL_PATH = "charent/ChatLM-mini-Chinese"
 EVAL_FILE = "/Users/luke/Documents/SCENIC agent/data/SCENIC_full_training_dataset.json"
 BENCHMARK_FILE = "/Users/luke/Documents/SCENIC agent/generated/iot_instruction_benchmark_200.json"
 OUTPUT_DIR = "/Users/luke/Documents/Encoder-Decoder/runs/eval/chatlm-eos"
@@ -51,6 +53,7 @@ NORMALIZATION = "strip_eos"  # raw, strip, or strip_eos
 ADD_EOS_TO_PROMPT = True
 DEVICE = None  # None uses cuda if available, otherwise cpu.
 FP16 = True
+MODEL_LOAD_MODE = "auto"  # auto, direct, or base_then_weights
 
 
 def resolve_model_path(model_path: str | Path) -> Path:
@@ -98,6 +101,175 @@ def resolve_tokenizer_path(model_path: str | Path, resolved_model_path: Path) ->
         if candidate.exists() and any((candidate / name).exists() for name in TOKENIZER_FILE_NAMES):
             return candidate
     return resolved_model_path
+
+
+def resolve_base_model_reference(base_model_path: str | Path) -> str:
+    path = Path(base_model_path).expanduser()
+    if path.exists():
+        return str(resolve_model_path(path))
+    if looks_like_local_path(str(base_model_path)):
+        raise FileNotFoundError(f"Base model path does not exist: {path}")
+    return str(base_model_path)
+
+
+def looks_like_local_path(value: str) -> bool:
+    path = Path(value).expanduser()
+    if path.is_absolute():
+        return True
+    if value.startswith(("~", "./", "../")):
+        return True
+    if len(path.parts) > 2:
+        return True
+    if any(part.startswith("checkpoint-") for part in path.parts):
+        return True
+    return path.parts[:1] in {
+        ("checkpoint",),
+        ("checkpoints",),
+        ("model",),
+        ("models",),
+        ("output",),
+        ("outputs",),
+        ("run",),
+        ("runs",),
+    }
+
+
+def missing_custom_code_files(model_path: Path) -> list[str]:
+    config_path = model_path / "config.json"
+    if not config_path.exists():
+        return []
+    try:
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return []
+
+    auto_map = config.get("auto_map")
+    if not isinstance(auto_map, dict):
+        return []
+
+    missing = []
+    for value in auto_map.values():
+        references = value if isinstance(value, list) else [value]
+        for reference in references:
+            if not isinstance(reference, str):
+                continue
+            module_reference = reference.split("--", 1)[-1]
+            module_name = module_reference.split(".", 1)[0]
+            if not module_name or module_name.startswith("transformers"):
+                continue
+            file_name = f"{module_name}.py"
+            if not (model_path / file_name).exists() and file_name not in missing:
+                missing.append(file_name)
+    return missing
+
+
+def checkpoint_weight_files(model_path: Path) -> list[Path]:
+    for index_name in ("model.safetensors.index.json", "pytorch_model.bin.index.json"):
+        index_path = model_path / index_name
+        if index_path.exists():
+            index = json.loads(index_path.read_text(encoding="utf-8"))
+            weight_names = index.get("weight_map", {}).values()
+            files = []
+            seen = set()
+            for name in weight_names:
+                if name not in seen:
+                    seen.add(name)
+                    files.append(model_path / name)
+            return files
+
+    patterns = (
+        "model.safetensors",
+        "model-*.safetensors",
+        "pytorch_model.bin",
+        "pytorch_model-*.bin",
+    )
+    files = []
+    for pattern in patterns:
+        files.extend(sorted(model_path.glob(pattern)))
+    return files
+
+
+def load_weight_file(path: Path) -> dict[str, Any]:
+    if path.suffix == ".safetensors":
+        try:
+            from safetensors.torch import load_file
+        except ImportError as exc:
+            raise RuntimeError(
+                f"{path.name} requires safetensors. Install it with: pip install safetensors"
+            ) from exc
+        return dict(load_file(str(path), device="cpu"))
+
+    import torch
+
+    payload = torch.load(path, map_location="cpu")
+    if isinstance(payload, dict):
+        for key in ("state_dict", "model_state_dict"):
+            if isinstance(payload.get(key), dict):
+                return payload[key]
+    return payload
+
+
+def remap_checkpoint_key(key: str, target_keys: set[str]) -> str | None:
+    candidates = [
+        key,
+        key.removeprefix("module."),
+        key.removeprefix("model."),
+        key.removeprefix("base_model.model."),
+    ]
+    for candidate in candidates:
+        if candidate in target_keys:
+            return candidate
+    return None
+
+
+def load_local_checkpoint_weights(model, model_path: Path) -> dict[str, Any]:
+    files = checkpoint_weight_files(model_path)
+    if not files:
+        adapter_path = model_path / "adapter_model.safetensors"
+        if adapter_path.exists():
+            raise RuntimeError(
+                f"Found only LoRA/PEFT adapter weights at {adapter_path}. "
+                "This standalone script expects a full merged model checkpoint."
+            )
+        raise FileNotFoundError(
+            f"No model weight files found in {model_path}. Expected model.safetensors, "
+            "model-*.safetensors, pytorch_model.bin, or pytorch_model-*.bin."
+        )
+
+    target_state = model.state_dict()
+    target_keys = set(target_state)
+    loaded_keys = set()
+    skipped = []
+
+    for file_path in files:
+        if not file_path.exists():
+            raise FileNotFoundError(f"Checkpoint shard listed in index is missing: {file_path}")
+        state_dict = load_weight_file(file_path)
+        filtered = {}
+        for key, tensor in state_dict.items():
+            mapped_key = remap_checkpoint_key(key, target_keys)
+            if mapped_key is None:
+                skipped.append(key)
+                continue
+            target_tensor = target_state[mapped_key]
+            if getattr(tensor, "shape", None) != target_tensor.shape:
+                skipped.append(key)
+                continue
+            filtered[mapped_key] = tensor
+            loaded_keys.add(mapped_key)
+        model.load_state_dict(filtered, strict=False)
+        del state_dict
+        del filtered
+
+    missing = sorted(target_keys - loaded_keys)
+    return {
+        "weight_files": [str(path) for path in files],
+        "loaded_key_count": len(loaded_keys),
+        "missing_key_count": len(missing),
+        "skipped_key_count": len(skipped),
+        "missing_key_examples": missing[:10],
+        "skipped_key_examples": skipped[:10],
+    }
 
 
 def read_json_or_jsonl(path: str | Path) -> list[dict[str, Any]]:
@@ -186,26 +358,88 @@ def gold_values(value: Any, normalization: str) -> list[str]:
     return [normalize_text(value, normalization)]
 
 
-def load_model_and_tokenizer(model_path: str | Path, device, fp16: bool = True):
+def load_model_and_tokenizer(
+    model_path: str | Path,
+    device,
+    fp16: bool = True,
+    *,
+    base_model_path: str | Path = BASE_MODEL_PATH,
+    model_load_mode: str = MODEL_LOAD_MODE,
+):
     import torch
     from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
     resolved_model_path = resolve_model_path(model_path)
     tokenizer_path = resolve_tokenizer_path(model_path, resolved_model_path)
+    resolved_base_model = resolve_base_model_reference(base_model_path)
 
-    tokenizer = AutoTokenizer.from_pretrained(
-        str(tokenizer_path),
-        trust_remote_code=True,
-    )
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(
+            str(tokenizer_path),
+            trust_remote_code=True,
+        )
+    except Exception as exc:
+        print(
+            f"Tokenizer load from local path failed: {exc}\n"
+            f"Falling back to tokenizer from {resolved_base_model}",
+            file=sys.stderr,
+        )
+        tokenizer = AutoTokenizer.from_pretrained(
+            resolved_base_model,
+            trust_remote_code=True,
+        )
 
     model_kwargs = {"trust_remote_code": True}
     if fp16 and device.type == "cuda":
         model_kwargs["torch_dtype"] = torch.float16
 
-    model = AutoModelForSeq2SeqLM.from_pretrained(
-        str(resolved_model_path),
-        **model_kwargs,
-    )
+    missing_code = missing_custom_code_files(resolved_model_path)
+    load_report = {"mode": model_load_mode}
+    model = None
+
+    if model_load_mode not in {"auto", "direct", "base_then_weights"}:
+        raise ValueError("model_load_mode must be auto, direct, or base_then_weights")
+
+    if model_load_mode in {"auto", "direct"} and not missing_code:
+        try:
+            model = AutoModelForSeq2SeqLM.from_pretrained(
+                str(resolved_model_path),
+                **model_kwargs,
+            )
+            load_report["mode"] = "direct"
+        except Exception as exc:
+            if model_load_mode == "direct":
+                raise
+            print(
+                f"Direct local model load failed: {exc}\n"
+                f"Falling back to architecture from {resolved_base_model} and local weights.",
+                file=sys.stderr,
+            )
+    elif model_load_mode == "direct" and missing_code:
+        raise FileNotFoundError(
+            f"Local model is missing custom code files: {missing_code}. "
+            "Use model_load_mode='base_then_weights' or copy those files into the checkpoint."
+        )
+
+    if model is None:
+        if missing_code:
+            print(
+                f"Local checkpoint is missing custom code files {missing_code}; "
+                f"loading architecture from {resolved_base_model} and applying local weights.",
+                file=sys.stderr,
+            )
+        model = AutoModelForSeq2SeqLM.from_pretrained(
+            resolved_base_model,
+            **model_kwargs,
+        )
+        weight_report = load_local_checkpoint_weights(model, resolved_model_path)
+        load_report = {
+            "mode": "base_then_weights",
+            "base_model_path": resolved_base_model,
+            **weight_report,
+        }
+
+    model._chatlm_eval_load_report = load_report
     model.to(device)
     model.eval()
 
@@ -385,15 +619,25 @@ def run_chatlm_eval(
     no_repeat_ngram_size: int = 0,
     device: str | None = None,
     fp16: bool = True,
+    base_model_path: str = BASE_MODEL_PATH,
+    model_load_mode: str = MODEL_LOAD_MODE,
     output_dir: str | None = None,
 ) -> dict[str, Any]:
     import torch
 
     torch_device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
-    model, tokenizer = load_model_and_tokenizer(model_path, torch_device, fp16=fp16)
+    model, tokenizer = load_model_and_tokenizer(
+        model_path,
+        torch_device,
+        fp16=fp16,
+        base_model_path=base_model_path,
+        model_load_mode=model_load_mode,
+    )
 
     summary = {
         "model_path": str(resolve_model_path(model_path)),
+        "base_model_path": base_model_path,
+        "model_load_report": getattr(model, "_chatlm_eval_load_report", {}),
         "device": str(torch_device),
     }
 
@@ -452,6 +696,12 @@ def run_chatlm_eval(
 def main() -> int:
     parser = argparse.ArgumentParser(description="Evaluate a ChatLM/T5-style seq2seq model with [EOS] prompt handling.")
     parser.add_argument("--model_path", default=MODEL_PATH)
+    parser.add_argument("--base_model_path", default=BASE_MODEL_PATH)
+    parser.add_argument(
+        "--model_load_mode",
+        choices=["auto", "direct", "base_then_weights"],
+        default=MODEL_LOAD_MODE,
+    )
     parser.add_argument("--eval_file", default=EVAL_FILE)
     parser.add_argument("--benchmark_file", default=BENCHMARK_FILE)
 
@@ -496,6 +746,8 @@ def main() -> int:
         no_repeat_ngram_size=args.no_repeat_ngram_size,
         device=args.device,
         fp16=args.fp16,
+        base_model_path=args.base_model_path,
+        model_load_mode=args.model_load_mode,
         output_dir=args.output_dir,
     )
 
