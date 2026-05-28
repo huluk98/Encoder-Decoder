@@ -110,6 +110,42 @@ def test_evaluate_file_shards_examples_by_rank(tmp_path, monkeypatch) -> None:
     assert [row["idx"] for row in rows] == [1, 3]
 
 
+def test_evaluate_file_halves_batch_size_after_cuda_oom(tmp_path, monkeypatch) -> None:
+    path = tmp_path / "eval.jsonl"
+    with path.open("w", encoding="utf-8") as handle:
+        for index in range(4):
+            handle.write(json.dumps({"prompt": f"p{index}", "response": f"p{index}"}) + "\n")
+
+    calls = {"count": 0}
+
+    def fake_generate_topk(_model, _tokenizer, prompts, **_kwargs):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise RuntimeError("CUDA out of memory")
+        return [[prompt] for prompt in prompts]
+
+    monkeypatch.setattr(eval_chatlm_eos, "generate_topk", fake_generate_topk)
+    monkeypatch.setattr(eval_chatlm_eos, "clear_cuda_cache", lambda: None)
+
+    result = eval_chatlm_eos.evaluate_file(
+        model=None,
+        tokenizer=None,
+        file_path=path,
+        device="cpu",
+        batch_size=4,
+        min_batch_size=1,
+        top_k=1,
+        add_eos_to_prompt=False,
+        rank=0,
+        world_size=1,
+        show_progress=False,
+    )
+
+    assert result["n"] == 4
+    assert result["final_batch_size_per_gpu"] == 2
+    assert result["correct@1"] == 4
+
+
 def test_merge_distributed_summaries_sums_metrics_and_predictions(tmp_path) -> None:
     output_dir = tmp_path / "out"
     parts_dir = output_dir / ".distributed_parts"

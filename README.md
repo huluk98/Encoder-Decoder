@@ -363,6 +363,8 @@ BENCHMARK_FILE = "/Users/luke/Documents/SCENIC agent/generated/iot_instruction_b
 OUTPUT_DIR = "/Users/luke/Documents/Encoder-Decoder/runs/eval/chatlm-eos"
 USE_8_GPUS = True
 NPROC_PER_NODE = 8
+BATCH_SIZE = 256  # per GPU on H20; effective 2048 prompts across 8 GPUs
+MIN_BATCH_SIZE = 1  # fallback if a long batch causes CUDA OOM
 ```
 
 If your local checkpoint says it cannot find `modeling_chat_model.py`, keep `BASE_MODEL_PATH = "charent/ChatLM-mini-Chinese"`. The script will load the custom ChatLM architecture from that base model and then apply the weights from `MODEL_PATH`, so the checkpoint folder itself does not need to contain `modeling_chat_model.py`. If the machine has no internet, set `BASE_MODEL_PATH` to a local copy of `charent/ChatLM-mini-Chinese` that contains the custom code files.
@@ -378,7 +380,7 @@ python scripts/eval_chatlm_eos.py \
   --benchmark_file "/absolute/path/to/benchmark.json" \
   --output_dir runs/eval/chatlm-eos \
   --top_k 5 \
-  --batch_size 8
+  --batch_size 256
 ```
 
 This separate script accepts JSON, JSONL, and wrappers such as `{"records": [...]}`. It auto-detects prompt keys like `prompt`, `input`, `question`, or `instruction`, and response keys like `response`, `answer`, `output`, or `target`. Use `--prompt_key anchor --response_key response` for SCENIC anchor files.

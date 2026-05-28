@@ -13,7 +13,18 @@ from typing import Any
 try:
     from tqdm import tqdm
 except ImportError:
-    tqdm = lambda x, **kwargs: x
+    class tqdm:  # type: ignore[no-redef]
+        def __init__(self, iterable=None, **_kwargs):
+            self.iterable = iterable
+
+        def __iter__(self):
+            return iter(self.iterable or [])
+
+        def update(self, _n=1) -> None:
+            return None
+
+        def close(self) -> None:
+            return None
 
 
 EOS_TEXT = "[EOS]"
@@ -46,7 +57,10 @@ RESPONSE_KEY = None
 BENCHMARK_PROMPT_KEY = None
 BENCHMARK_RESPONSE_KEY = None
 
-BATCH_SIZE = 8
+# Per-GPU batch size. On 8 NVIDIA H20 GPUs with ~143771 MiB each, this gives
+# an effective eval batch of 2048 prompts before beam expansion.
+BATCH_SIZE = 256
+MIN_BATCH_SIZE = 1
 TOP_K = 5
 MAX_INPUT_TOKENS = 512
 MAX_NEW_TOKENS = 256
@@ -341,6 +355,21 @@ def cuda_device_count() -> int:
     return torch.cuda.device_count() if torch.cuda.is_available() else 0
 
 
+def is_cuda_oom(exc: BaseException) -> bool:
+    name = exc.__class__.__name__.lower()
+    text = str(exc).lower()
+    return "outofmemory" in name or "out of memory" in text or "cuda oom" in text
+
+
+def clear_cuda_cache() -> None:
+    try:
+        import torch
+    except ImportError:
+        return
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+
 def should_relaunch_distributed(args: argparse.Namespace) -> bool:
     if args.distributed_worker or distributed_env()["is_distributed"]:
         return False
@@ -616,6 +645,7 @@ def evaluate_file(
     prompt_key: str | None = None,
     response_key: str | None = None,
     batch_size: int = 8,
+    min_batch_size: int = 1,
     top_k: int = 5,
     max_input_tokens: int = 512,
     max_new_tokens: int = 256,
@@ -649,26 +679,43 @@ def evaluate_file(
     correct_1 = 0
     correct_k = 0
     pred_rows = []
+    current_batch_size = max(1, batch_size)
+    min_batch_size = max(1, min_batch_size)
 
     progress = tqdm(
-        range(0, len(examples), batch_size),
+        total=len(examples),
         desc=f"rank {rank} eval {Path(file_path).name}" if world_size > 1 else f"eval {Path(file_path).name}",
         disable=not show_progress,
     )
-    for start in progress:
-        batch = examples[start : start + batch_size]
+    start = 0
+    while start < len(examples):
+        end = min(start + current_batch_size, len(examples))
+        batch = examples[start:end]
         prompts = [add_eos(ex["prompt"], add_eos_to_prompt) for ex in batch]
 
-        topk_outputs = generate_topk(
-            model,
-            tokenizer,
-            prompts,
-            device=device,
-            top_k=top_k,
-            max_input_tokens=max_input_tokens,
-            max_new_tokens=max_new_tokens,
-            no_repeat_ngram_size=no_repeat_ngram_size,
-        )
+        try:
+            topk_outputs = generate_topk(
+                model,
+                tokenizer,
+                prompts,
+                device=device,
+                top_k=top_k,
+                max_input_tokens=max_input_tokens,
+                max_new_tokens=max_new_tokens,
+                no_repeat_ngram_size=no_repeat_ngram_size,
+            )
+        except RuntimeError as exc:
+            if is_cuda_oom(exc) and current_batch_size > min_batch_size:
+                clear_cuda_cache()
+                next_batch_size = max(min_batch_size, current_batch_size // 2)
+                print(
+                    f"rank {rank}: CUDA OOM at batch_size={current_batch_size}; "
+                    f"retrying with batch_size={next_batch_size}",
+                    file=sys.stderr,
+                )
+                current_batch_size = next_batch_size
+                continue
+            raise
 
         for ex, candidates in zip(batch, topk_outputs):
             candidates = [normalize_text(c, normalization) for c in candidates]
@@ -690,12 +737,17 @@ def evaluate_file(
                     f"em{top_k}": emk,
                 }
             )
+        start = end
+        progress.update(len(batch))
+    progress.close()
 
     n = len(examples)
     result = {
         "file": str(Path(file_path).expanduser().resolve()),
         "source_n": len(all_examples),
         "n": n,
+        "requested_batch_size_per_gpu": batch_size,
+        "final_batch_size_per_gpu": current_batch_size,
         "correct@1": correct_1,
         f"correct@{top_k}": correct_k,
         "em@1": correct_1 / n if n else 0.0,
@@ -831,6 +883,7 @@ def run_chatlm_eval(
     benchmark_prompt_key: str | None = None,
     benchmark_response_key: str | None = None,
     batch_size: int = 8,
+    min_batch_size: int = 1,
     top_k: int = 5,
     max_input_tokens: int = 512,
     max_new_tokens: int = 256,
@@ -889,6 +942,7 @@ def run_chatlm_eval(
         prompt_key=prompt_key,
         response_key=response_key,
         batch_size=batch_size,
+        min_batch_size=min_batch_size,
         top_k=top_k,
         max_input_tokens=max_input_tokens,
         max_new_tokens=max_new_tokens,
@@ -917,6 +971,7 @@ def run_chatlm_eval(
             prompt_key=benchmark_prompt_key if benchmark_prompt_key is not None else prompt_key,
             response_key=benchmark_response_key if benchmark_response_key is not None else response_key,
             batch_size=batch_size,
+            min_batch_size=min_batch_size,
             top_k=top_k,
             max_input_tokens=max_input_tokens,
             max_new_tokens=max_new_tokens,
@@ -966,6 +1021,7 @@ def main() -> int:
     parser.add_argument("--benchmark_response_key", default=BENCHMARK_RESPONSE_KEY)
 
     parser.add_argument("--batch_size", type=int, default=BATCH_SIZE)
+    parser.add_argument("--min_batch_size", type=int, default=MIN_BATCH_SIZE)
     parser.add_argument("--top_k", type=int, default=TOP_K)
     parser.add_argument("--max_input_tokens", type=int, default=MAX_INPUT_TOKENS)
     parser.add_argument("--max_new_tokens", type=int, default=MAX_NEW_TOKENS)
@@ -1003,6 +1059,7 @@ def main() -> int:
             benchmark_prompt_key=args.benchmark_prompt_key,
             benchmark_response_key=args.benchmark_response_key,
             batch_size=args.batch_size,
+            min_batch_size=args.min_batch_size,
             top_k=args.top_k,
             max_input_tokens=args.max_input_tokens,
             max_new_tokens=args.max_new_tokens,
