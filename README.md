@@ -162,6 +162,29 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 conda run -n encoder-decoder-prune \
 
 When `CUDA_VISIBLE_DEVICES=4,5,6,7` is set, those physical GPUs are exposed to the process as local CUDA devices `0,1,2,3`. Use `--nproc_per_node 4`, not `8`, when exposing four GPUs.
 
+You can also run the same 4-GPU commands from a shell launcher instead of typing the full CLI:
+
+```bash
+./scripts/run_4gpu_train_eval.sh sft
+./scripts/run_4gpu_train_eval.sh contrastive
+./scripts/run_4gpu_train_eval.sh both
+```
+
+Preview the generated commands without launching training:
+
+```bash
+DRY_RUN=1 ./scripts/run_4gpu_train_eval.sh both
+```
+
+The launcher uses `CUDA_VISIBLE_DEVICES=4,5,6,7`, `NPROC_PER_NODE=4`, and the `encoder-decoder-prune` conda environment by default. Override paths or training settings with environment variables:
+
+```bash
+TRAIN_SOURCE=data/my_sft.jsonl \
+BENCHMARK_SOURCE=data/my_benchmark.jsonl \
+EPOCHS=1 \
+./scripts/run_4gpu_train_eval.sh sft
+```
+
 Run 8-GPU contrastive SFT with top-1 and top-5 exact eval:
 
 1. Edit the path block at the top of [scripts/train_contrastive_8gpu.py](scripts/train_contrastive_8gpu.py):
