@@ -8,35 +8,62 @@ set -euo pipefail
 #   ./scripts/run_4gpu_train_eval.sh contrastive
 #   ./scripts/run_4gpu_train_eval.sh both
 #
-# Common overrides:
+# Common overrides without editing this file:
 #   DRY_RUN=1 ./scripts/run_4gpu_train_eval.sh both
 #   EPOCHS=1 TRAIN_SOURCE=data/my_sft.jsonl ./scripts/run_4gpu_train_eval.sh sft
 #   MASTER_PORT=29601 ./scripts/run_4gpu_train_eval.sh sft
 
+# ---------------------------------------------------------------------------
+# EDIT THIS BLOCK
+# ---------------------------------------------------------------------------
+# Change these values directly when you want to point at different files.
+DEFAULT_MODE="sft"  # sft, contrastive, or both
+DEFAULT_ENV_NAME="DPO"
+DEFAULT_CUDA_DEVICES="4,5,6,7"
+DEFAULT_NPROC_PER_NODE="4"
+DEFAULT_MASTER_PORT="29573"
+DEFAULT_MODEL_PATH="charent/ChatLM-mini-Chinese"
+DEFAULT_PRECISION="bf16"  # bf16, fp16, or fp32
+DEFAULT_EPOCHS="3"
+
+# Regular SFT paths.
+DEFAULT_TRAIN_SOURCE="data/sft.jsonl"
+DEFAULT_TRAIN_EVAL_SOURCE="${DEFAULT_TRAIN_SOURCE}"
+DEFAULT_BENCHMARK_SOURCE="data/benchmark.jsonl"
+DEFAULT_SFT_OUTPUT_DIR="runs/chatlm-mini-4gpu-sft"
+
+# Contrastive SFT paths.
+DEFAULT_CONTRASTIVE_TRAIN_SOURCE="/Users/luke/Documents/SCENIC agent/data/SCENIC_full_anchor_positive_negative.json"
+DEFAULT_SFT_TRAIN_EVAL_SOURCE="data/sft.jsonl"
+DEFAULT_CONTRASTIVE_BENCHMARK_SOURCE="${DEFAULT_BENCHMARK_SOURCE}"
+DEFAULT_CONTRASTIVE_OUTPUT_DIR="runs/chatlm-mini-4gpu-contrastive"
+DEFAULT_NEGATIVE_FIELD="invalid_negative"
+# ---------------------------------------------------------------------------
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-MODE="${1:-${MODE:-sft}}"
-ENV_NAME="${ENV_NAME:-encoder-decoder-prune}"
-CUDA_DEVICES="${CUDA_DEVICES:-4,5,6,7}"
+MODE="${1:-${MODE:-${DEFAULT_MODE}}}"
+ENV_NAME="${ENV_NAME:-${DEFAULT_ENV_NAME}}"
+CUDA_DEVICES="${CUDA_DEVICES:-${DEFAULT_CUDA_DEVICES}}"
 export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-${CUDA_DEVICES}}"
 
-NPROC_PER_NODE="${NPROC_PER_NODE:-4}"
-MASTER_PORT="${MASTER_PORT:-29573}"
-MODEL_PATH="${MODEL_PATH:-charent/ChatLM-mini-Chinese}"
-PRECISION="${PRECISION:-bf16}"
-EPOCHS="${EPOCHS:-3}"
+NPROC_PER_NODE="${NPROC_PER_NODE:-${DEFAULT_NPROC_PER_NODE}}"
+MASTER_PORT="${MASTER_PORT:-${DEFAULT_MASTER_PORT}}"
+MODEL_PATH="${MODEL_PATH:-${DEFAULT_MODEL_PATH}}"
+PRECISION="${PRECISION:-${DEFAULT_PRECISION}}"
+EPOCHS="${EPOCHS:-${DEFAULT_EPOCHS}}"
 
-TRAIN_SOURCE="${TRAIN_SOURCE:-data/sft.jsonl}"
-TRAIN_EVAL_SOURCE="${TRAIN_EVAL_SOURCE:-${TRAIN_SOURCE}}"
-BENCHMARK_SOURCE="${BENCHMARK_SOURCE:-data/benchmark.jsonl}"
-SFT_OUTPUT_DIR="${SFT_OUTPUT_DIR:-runs/chatlm-mini-4gpu-sft}"
+TRAIN_SOURCE="${TRAIN_SOURCE:-${DEFAULT_TRAIN_SOURCE}}"
+TRAIN_EVAL_SOURCE="${TRAIN_EVAL_SOURCE:-${DEFAULT_TRAIN_EVAL_SOURCE}}"
+BENCHMARK_SOURCE="${BENCHMARK_SOURCE:-${DEFAULT_BENCHMARK_SOURCE}}"
+SFT_OUTPUT_DIR="${SFT_OUTPUT_DIR:-${DEFAULT_SFT_OUTPUT_DIR}}"
 
-CONTRASTIVE_TRAIN_SOURCE="${CONTRASTIVE_TRAIN_SOURCE:-/Users/luke/Documents/SCENIC agent/data/SCENIC_full_anchor_positive_negative.json}"
-SFT_TRAIN_EVAL_SOURCE="${SFT_TRAIN_EVAL_SOURCE:-data/sft.jsonl}"
-CONTRASTIVE_BENCHMARK_SOURCE="${CONTRASTIVE_BENCHMARK_SOURCE:-${BENCHMARK_SOURCE}}"
-CONTRASTIVE_OUTPUT_DIR="${CONTRASTIVE_OUTPUT_DIR:-runs/chatlm-mini-4gpu-contrastive}"
-NEGATIVE_FIELD="${NEGATIVE_FIELD:-invalid_negative}"
+CONTRASTIVE_TRAIN_SOURCE="${CONTRASTIVE_TRAIN_SOURCE:-${DEFAULT_CONTRASTIVE_TRAIN_SOURCE}}"
+SFT_TRAIN_EVAL_SOURCE="${SFT_TRAIN_EVAL_SOURCE:-${DEFAULT_SFT_TRAIN_EVAL_SOURCE}}"
+CONTRASTIVE_BENCHMARK_SOURCE="${CONTRASTIVE_BENCHMARK_SOURCE:-${DEFAULT_CONTRASTIVE_BENCHMARK_SOURCE}}"
+CONTRASTIVE_OUTPUT_DIR="${CONTRASTIVE_OUTPUT_DIR:-${DEFAULT_CONTRASTIVE_OUTPUT_DIR}}"
+NEGATIVE_FIELD="${NEGATIVE_FIELD:-${DEFAULT_NEGATIVE_FIELD}}"
 
 dry_run_args=()
 if [[ "${DRY_RUN:-0}" == "1" ]]; then

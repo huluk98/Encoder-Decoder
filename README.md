@@ -132,7 +132,7 @@ Use `--precision fp16` instead if your GPUs/checkpoint run better in float16.
 Run the same one-command training/eval flow on physical GPUs `4,5,6,7`:
 
 ```bash
-CUDA_VISIBLE_DEVICES=4,5,6,7 conda run -n encoder-decoder-prune \
+CUDA_VISIBLE_DEVICES=4,5,6,7 conda run -n DPO \
   python scripts/train_sft_8gpu.py \
   --nproc_per_node 4 \
   --model_path charent/ChatLM-mini-Chinese \
@@ -147,7 +147,7 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 conda run -n encoder-decoder-prune \
 For contrastive SFT plus eval on physical GPUs `4,5,6,7`:
 
 ```bash
-CUDA_VISIBLE_DEVICES=4,5,6,7 conda run -n encoder-decoder-prune \
+CUDA_VISIBLE_DEVICES=4,5,6,7 conda run -n DPO \
   python scripts/train_contrastive_8gpu.py \
   --nproc_per_node 4 \
   --model_path charent/ChatLM-mini-Chinese \
@@ -176,7 +176,18 @@ Preview the generated commands without launching training:
 DRY_RUN=1 ./scripts/run_4gpu_train_eval.sh both
 ```
 
-The launcher uses `CUDA_VISIBLE_DEVICES=4,5,6,7`, `NPROC_PER_NODE=4`, and the `encoder-decoder-prune` conda environment by default. Override paths or training settings with environment variables:
+The launcher uses `CUDA_VISIBLE_DEVICES=4,5,6,7`, `NPROC_PER_NODE=4`, and the `DPO` conda environment by default. Change file paths and JSON paths in the `EDIT THIS BLOCK` section at the top of [scripts/run_4gpu_train_eval.sh](scripts/run_4gpu_train_eval.sh):
+
+```bash
+DEFAULT_TRAIN_SOURCE="data/sft.jsonl"
+DEFAULT_TRAIN_EVAL_SOURCE="${DEFAULT_TRAIN_SOURCE}"
+DEFAULT_BENCHMARK_SOURCE="data/benchmark.jsonl"
+DEFAULT_CONTRASTIVE_TRAIN_SOURCE="/Users/luke/Documents/SCENIC agent/data/SCENIC_full_anchor_positive_negative.json"
+DEFAULT_SFT_TRAIN_EVAL_SOURCE="data/sft.jsonl"
+DEFAULT_CONTRASTIVE_BENCHMARK_SOURCE="${DEFAULT_BENCHMARK_SOURCE}"
+```
+
+You can still override paths or training settings without editing the file by using environment variables:
 
 ```bash
 TRAIN_SOURCE=data/my_sft.jsonl \
