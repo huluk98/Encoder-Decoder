@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Sequence
 
 from encoder_decoder.data import PromptResponseRecord, load_prompt_response_records
-from encoder_decoder.modeling import ModelFamily, load_tokenizer_and_model
+from encoder_decoder.modeling import ModelFamily, copy_custom_code_files, load_tokenizer_and_model
 from encoder_decoder.tokenization import (
     DEFAULT_CAUSAL_PROMPT_TEMPLATE,
     DEFAULT_CAUSAL_RESPONSE_TEMPLATE,
@@ -501,6 +501,12 @@ def run_pruning(config: PruningConfig) -> PruningReport:
     output_dir.mkdir(parents=True, exist_ok=True)
     model.save_pretrained(output_dir)
     tokenizer.save_pretrained(output_dir)
+    copy_custom_code_files(
+        output_dir,
+        config=model.config,
+        source_paths=[config.model_name_or_path, getattr(model.config, "_name_or_path", None)],
+        objects=[model, model.config, tokenizer],
+    )
     with (output_dir / "pruning_report.json").open("w", encoding="utf-8") as handle:
         json.dump(asdict(report), handle, indent=2)
     return report

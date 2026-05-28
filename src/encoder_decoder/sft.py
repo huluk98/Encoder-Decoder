@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Sequence
 
 from encoder_decoder.data import load_contrastive_records, load_prompt_response_records
-from encoder_decoder.modeling import ModelFamily, load_tokenizer_and_model
+from encoder_decoder.modeling import ModelFamily, copy_custom_code_files, load_tokenizer_and_model
 from encoder_decoder.tokenization import (
     DEFAULT_CAUSAL_PROMPT_TEMPLATE,
     DEFAULT_CAUSAL_RESPONSE_TEMPLATE,
@@ -201,6 +201,12 @@ def train_sft(config: SFTConfig) -> dict[str, float]:
     trainer.save_model(config.output_dir)
     if trainer.is_world_process_zero():
         tokenizer.save_pretrained(config.output_dir)
+        copy_custom_code_files(
+            config.output_dir,
+            config=model.config,
+            source_paths=[config.model_name_or_path, getattr(model.config, "_name_or_path", None)],
+            objects=[model, model.config, tokenizer],
+        )
     trainer.save_state()
 
     metrics = dict(train_result.metrics)

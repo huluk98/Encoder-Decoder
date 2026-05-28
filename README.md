@@ -453,6 +453,14 @@ MIN_BATCH_SIZE = 1  # fallback if a long batch causes CUDA OOM
 
 If your local checkpoint says it cannot find `modeling_chat_model.py`, keep `BASE_MODEL_PATH = "charent/ChatLM-mini-Chinese"`. The script will load the custom ChatLM architecture from that base model and then apply the weights from `MODEL_PATH`, so the checkpoint folder itself does not need to contain `modeling_chat_model.py`. If the machine has no internet, set `BASE_MODEL_PATH` to a local copy of `charent/ChatLM-mini-Chinese` that contains the custom code files.
 
+For regular `encdec-*` commands, newly saved SFT/pruned checkpoints copy the required ChatLM custom-code files automatically. To repair an older checkpoint that is already missing `modeling_chat_model.py`, run:
+
+```bash
+python scripts/repair_custom_code.py \
+  --checkpoint_dir runs/chatlm-mini-4gpu-sft \
+  --base_model_name_or_path charent/ChatLM-mini-Chinese
+```
+
 With `USE_8_GPUS = True`, a normal `python scripts/eval_chatlm_eos.py` relaunches itself with `CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun --nproc_per_node 4`, splits eval rows across those GPUs, and merges predictions/metrics into `OUTPUT_DIR/summary.json`. Use `--no_8_gpus` to force single-GPU evaluation.
 
 You can still override any path from the command line:

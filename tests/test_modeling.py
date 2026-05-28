@@ -3,6 +3,9 @@ from __future__ import annotations
 import pytest
 
 from encoder_decoder.modeling import (
+    copy_custom_code_files,
+    custom_code_filenames_from_config,
+    missing_custom_code_files,
     resolve_model_name_or_path,
     resolve_tokenizer_name_or_path,
 )
@@ -49,3 +52,35 @@ def test_resolve_tokenizer_name_or_path_falls_back_to_parent(tmp_path) -> None:
     tokenizer_path = resolve_tokenizer_name_or_path(str(output_dir), str(checkpoint))
 
     assert tokenizer_path == str(output_dir.resolve())
+
+
+def test_custom_code_filenames_from_config_reads_auto_map(tmp_path) -> None:
+    model_dir = tmp_path / "model"
+    model_dir.mkdir()
+    (model_dir / "config.json").write_text(
+        '{"auto_map": {"AutoModelForSeq2SeqLM": "modeling_chat_model.ChatModel"}}',
+        encoding="utf-8",
+    )
+
+    assert custom_code_filenames_from_config(model_dir) == ["modeling_chat_model.py"]
+    assert missing_custom_code_files(model_dir) == ["modeling_chat_model.py"]
+
+
+def test_copy_custom_code_files_copies_remote_code_siblings(tmp_path) -> None:
+    source_dir = tmp_path / "base"
+    output_dir = tmp_path / "checkpoint"
+    source_dir.mkdir()
+    output_dir.mkdir()
+    (source_dir / "modeling_chat_model.py").write_text("# model\n", encoding="utf-8")
+    (source_dir / "configuration_chat_model.py").write_text("# config\n", encoding="utf-8")
+    (output_dir / "config.json").write_text(
+        '{"auto_map": {"AutoConfig": "configuration_chat_model.ChatConfig", '
+        '"AutoModelForSeq2SeqLM": "modeling_chat_model.ChatModel"}}',
+        encoding="utf-8",
+    )
+
+    missing = copy_custom_code_files(output_dir, source_paths=[source_dir])
+
+    assert missing == []
+    assert (output_dir / "modeling_chat_model.py").read_text(encoding="utf-8") == "# model\n"
+    assert (output_dir / "configuration_chat_model.py").read_text(encoding="utf-8") == "# config\n"

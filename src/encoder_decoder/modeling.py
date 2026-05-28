@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import re
+import shutil
 from pathlib import Path
 from typing import Literal
 
@@ -23,6 +25,77 @@ def infer_model_family(model_name_or_path: str, *, trust_remote_code: bool = Fal
     resolved_path = resolve_model_name_or_path(model_name_or_path)
     config = AutoConfig.from_pretrained(resolved_path, trust_remote_code=trust_remote_code)
     return "seq2seq" if getattr(config, "is_encoder_decoder", False) else "causal"
+
+
+def custom_code_filenames_from_config(config_or_path) -> list[str]:
+    """Return custom remote-code Python files referenced by a config auto_map."""
+    auto_map = _auto_map_from_config(config_or_path)
+    if not isinstance(auto_map, dict):
+        return []
+
+    filenames = []
+    for value in auto_map.values():
+        references = value if isinstance(value, list) else [value]
+        for reference in references:
+            if not isinstance(reference, str):
+                continue
+            module_reference = reference.split("--", 1)[-1]
+            module_name = module_reference.split(".", 1)[0]
+            if not module_name or module_name.startswith("transformers"):
+                continue
+            filename = f"{module_name}.py"
+            if filename not in filenames:
+                filenames.append(filename)
+    return filenames
+
+
+def copy_custom_code_files(
+    output_dir: str | Path,
+    *,
+    config=None,
+    source_paths: list[str | Path | None] | tuple[str | Path | None, ...] = (),
+    objects: list[object | None] | tuple[object | None, ...] = (),
+) -> list[str]:
+    """Copy custom Hugging Face remote-code files into a local checkpoint directory.
+
+    This keeps checkpoints with `auto_map` entries loadable after training/pruning.
+    Returns the required filenames that could not be found in any source location.
+    """
+    output_path = Path(output_dir).expanduser().resolve()
+    required = custom_code_filenames_from_config(config)
+    if not required:
+        required = custom_code_filenames_from_config(output_path)
+    if not required:
+        return []
+
+    source_dirs = _custom_code_source_dirs(source_paths=source_paths, objects=objects)
+    missing = []
+    copied_from_dirs: set[Path] = set()
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    for filename in required:
+        if (output_path / filename).exists():
+            continue
+        source_dir = next((path for path in source_dirs if (path / filename).exists()), None)
+        if source_dir is None:
+            missing.append(filename)
+            continue
+        if source_dir in copied_from_dirs:
+            continue
+        copied_from_dirs.add(source_dir)
+        for py_file in sorted(source_dir.glob("*.py")):
+            shutil.copy2(py_file, output_path / py_file.name)
+
+    return [filename for filename in required if not (output_path / filename).exists()]
+
+
+def missing_custom_code_files(model_dir: str | Path) -> list[str]:
+    path = Path(model_dir).expanduser()
+    return [
+        filename
+        for filename in custom_code_filenames_from_config(path)
+        if not (path / filename).exists()
+    ]
 
 
 def resolve_model_name_or_path(model_name_or_path: str) -> str:
@@ -149,6 +222,11 @@ def load_tokenizer_and_model(
     from transformers import AutoModelForCausalLM, AutoModelForSeq2SeqLM, AutoTokenizer
 
     resolved_model_path = resolve_model_name_or_path(model_name_or_path)
+    if trust_remote_code:
+        copy_custom_code_files(
+            resolved_model_path,
+            source_paths=[Path(resolved_model_path).parent],
+        )
     resolved_tokenizer_path = resolve_tokenizer_name_or_path(
         model_name_or_path,
         resolved_model_path,
@@ -171,9 +249,17 @@ def load_tokenizer_and_model(
         load_kwargs["device_map"] = device_map
 
     if resolved_family == "seq2seq":
-        model = AutoModelForSeq2SeqLM.from_pretrained(resolved_model_path, **load_kwargs)
+        try:
+            model = AutoModelForSeq2SeqLM.from_pretrained(resolved_model_path, **load_kwargs)
+        except (ImportError, OSError, ValueError) as exc:
+            _raise_custom_code_error_if_missing(resolved_model_path, exc)
+            raise
     elif resolved_family == "causal":
-        model = AutoModelForCausalLM.from_pretrained(resolved_model_path, **load_kwargs)
+        try:
+            model = AutoModelForCausalLM.from_pretrained(resolved_model_path, **load_kwargs)
+        except (ImportError, OSError, ValueError) as exc:
+            _raise_custom_code_error_if_missing(resolved_model_path, exc)
+            raise
     else:
         raise ValueError(f"Unsupported model family: {resolved_family}")
 
@@ -183,3 +269,80 @@ def load_tokenizer_and_model(
         model.config.pad_token_id = tokenizer.pad_token_id
 
     return model, tokenizer, resolved_family
+
+
+def _auto_map_from_config(config_or_path):
+    if config_or_path is None:
+        return None
+    if isinstance(config_or_path, (str, Path)):
+        path = Path(config_or_path).expanduser()
+        config_path = path / "config.json" if path.is_dir() else path
+        if not config_path.exists():
+            return None
+        try:
+            payload = json.loads(config_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return None
+        return payload.get("auto_map")
+
+    auto_map = getattr(config_or_path, "auto_map", None)
+    if auto_map is not None:
+        return auto_map
+    if hasattr(config_or_path, "to_dict"):
+        return config_or_path.to_dict().get("auto_map")
+    return None
+
+
+def _custom_code_source_dirs(
+    *,
+    source_paths: list[str | Path | None] | tuple[str | Path | None, ...],
+    objects: list[object | None] | tuple[object | None, ...],
+) -> list[Path]:
+    source_dirs: list[Path] = []
+    for value in source_paths:
+        if value is None:
+            continue
+        path = Path(value).expanduser()
+        if not path.exists():
+            continue
+        path = path.resolve()
+        if path.is_file():
+            path = path.parent
+        if path not in source_dirs:
+            source_dirs.append(path)
+
+    for obj in objects:
+        source_dir = _object_module_dir(obj)
+        if source_dir is not None and source_dir not in source_dirs:
+            source_dirs.append(source_dir)
+    return source_dirs
+
+
+def _object_module_dir(obj) -> Path | None:
+    if obj is None:
+        return None
+    try:
+        import inspect
+
+        path = Path(inspect.getfile(obj.__class__)).expanduser().resolve()
+    except (OSError, TypeError):
+        return None
+    if path.name == "__init__.py":
+        return path.parent
+    return path.parent if path.is_file() else path
+
+
+def _raise_custom_code_error_if_missing(model_path: str, exc: Exception) -> None:
+    path = Path(model_path)
+    if not path.exists():
+        return
+    missing = missing_custom_code_files(path)
+    if not missing:
+        return
+    missing_text = ", ".join(missing)
+    raise FileNotFoundError(
+        f"Local checkpoint {path} is missing custom Hugging Face code files: {missing_text}. "
+        "Copy those files from the base model into the checkpoint directory, or run "
+        "`python scripts/repair_custom_code.py --checkpoint_dir "
+        f"{path} --base_model_name_or_path charent/ChatLM-mini-Chinese`."
+    ) from exc
