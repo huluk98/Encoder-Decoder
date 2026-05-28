@@ -345,6 +345,35 @@ python scripts/eval_model_and_benchmark.py \
 
 The wrapper writes `eval_metrics.json`, `benchmark_metrics.json`, prediction JSONL files, and `top1_top5_metrics.json` under `--output_dir`.
 
+Alternative ChatLM/T5-style evaluator with textual `[EOS]` prompt handling:
+
+```bash
+python scripts/eval_chatlm_eos.py \
+  --model_path "/absolute/path/to/ChatLM-mini-Chinese-or-checkpoint" \
+  --eval_file "/absolute/path/to/eval.json" \
+  --benchmark_file "/absolute/path/to/benchmark.json" \
+  --output_dir runs/eval/chatlm-eos \
+  --top_k 5 \
+  --batch_size 8
+```
+
+This separate script accepts JSON, JSONL, and wrappers such as `{"records": [...]}`. It auto-detects prompt keys like `prompt`, `input`, `question`, or `instruction`, and response keys like `response`, `answer`, `output`, or `target`. Use `--prompt_key anchor --response_key response` for SCENIC anchor files.
+
+For SCENIC anchor eval plus a normal prompt/response benchmark:
+
+```bash
+python scripts/eval_chatlm_eos.py \
+  --model_path "/absolute/path/to/model_or_checkpoint" \
+  --eval_file "/Users/luke/Documents/SCENIC agent/data/SCENIC_full_anchor_positive_negative.json" \
+  --prompt_key anchor \
+  --response_key response \
+  --benchmark_file "/absolute/path/to/benchmark.json" \
+  --benchmark_prompt_key prompt \
+  --benchmark_response_key response \
+  --output_dir runs/eval/chatlm-eos-anchor \
+  --top_k 5
+```
+
 ```bash
 encdec-eval-exact \
   --model_name_or_path runs/chatlm-mini-sft \
