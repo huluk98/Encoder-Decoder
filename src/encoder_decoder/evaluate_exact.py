@@ -282,7 +282,7 @@ def _progress(iterable, *, desc: str):
 
 def parse_args(argv: Sequence[str] | None = None) -> ExactEvalConfig:
     parser = argparse.ArgumentParser(description="Run exact-match generation evaluation.")
-    parser.add_argument("--model_name_or_path", required=True)
+    parser.add_argument("--model_name_or_path", "--model_path", required=True)
     parser.add_argument("--eval_source", required=True)
     parser.add_argument("--output_path")
     parser.add_argument("--metrics_path")

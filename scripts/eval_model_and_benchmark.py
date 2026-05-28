@@ -19,6 +19,8 @@ from encoder_decoder.evaluate_exact import (  # noqa: E402
 )
 from encoder_decoder.modeling import load_tokenizer_and_model  # noqa: E402
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
 # ---------------------------------------------------------------------------
 # EDIT THIS BLOCK
 # ---------------------------------------------------------------------------
@@ -91,8 +93,8 @@ def build_eval_config(
 ) -> ExactEvalConfig:
     output_dir = Path(args.output_dir)
     return ExactEvalConfig(
-        model_name_or_path=args.model_path,
-        eval_source=source,
+        model_name_or_path=resolve_local_arg(args.model_path),
+        eval_source=resolve_local_arg(source),
         output_path=str(output_dir / f"{name}_predictions.jsonl"),
         metrics_path=str(output_dir / f"{name}_metrics.json"),
         split=split,
@@ -170,7 +172,7 @@ def default_device() -> str:
 
 
 def print_dry_run(args: argparse.Namespace) -> None:
-    print(f"model_path: {args.model_path}")
+    print(f"model_path: {resolve_local_arg(args.model_path)}")
     print(f"model_family: {args.model_family}")
     print(f"precision: {args.precision}")
     print(f"output_dir: {args.output_dir}")
@@ -220,7 +222,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     device = torch.device(args.device or default_device())
     model, tokenizer, resolved_family = load_tokenizer_and_model(
-        args.model_path,
+        resolve_local_arg(args.model_path),
         model_family=args.model_family,
         torch_dtype=torch_dtype_for_precision(args.precision),
         trust_remote_code=trust_remote_code(args),
@@ -242,6 +244,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     write_summary(Path(args.output_dir), results)
     print_table(results, args.top_k)
     return 0
+
+
+def resolve_local_arg(value: str) -> str:
+    path = Path(value).expanduser()
+    if path.exists():
+        return str(path.resolve())
+    if path.is_absolute():
+        return str(path)
+    repo_path = REPO_ROOT / path
+    if repo_path.exists():
+        return str(repo_path.resolve())
+    return value
 
 
 if __name__ == "__main__":

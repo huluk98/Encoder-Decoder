@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 
-from encoder_decoder.data import load_contrastive_records
+import pytest
+
+from encoder_decoder.data import load_contrastive_records, load_prompt_response_records
 
 
 def test_load_contrastive_records_uses_configured_negative_field(tmp_path) -> None:
@@ -34,3 +36,10 @@ def test_load_contrastive_records_uses_configured_negative_field(tmp_path) -> No
     assert records[0].negative == "make the AC brighter"
     assert records[0].response == "AC off at 10"
     assert records[0].meta["source_id"] == "row-1"
+
+
+def test_missing_local_dataset_path_fails_before_hf_lookup(tmp_path) -> None:
+    missing_path = tmp_path / "missing.jsonl"
+
+    with pytest.raises(FileNotFoundError, match="Local dataset path does not exist"):
+        load_prompt_response_records(str(missing_path))

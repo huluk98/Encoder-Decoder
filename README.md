@@ -311,6 +311,21 @@ python scripts/eval_model_and_benchmark.py \
   --top_k 5
 ```
 
+For a local checkpoint, pass the saved model directory, not a single weight file. Absolute paths are safest, and paths with spaces must be quoted:
+
+```bash
+python scripts/eval_model_and_benchmark.py \
+  --model_path "/absolute/path/to/runs/chatlm-mini-8gpu-sft" \
+  --eval_source "/absolute/path/to/eval.json" \
+  --benchmark_source "/absolute/path/to/benchmark.json" \
+  --output_dir runs/eval/local-model \
+  --model_family seq2seq \
+  --precision bf16 \
+  --top_k 5
+```
+
+If you pass a training output directory that has no final `config.json` but does contain `checkpoint-*` folders, the loader uses the latest checkpoint automatically.
+
 If your eval file uses SCENIC anchor fields while the benchmark uses prompt fields:
 
 ```bash

@@ -36,6 +36,10 @@ class SFTConfig:
     anchor_eval_split: str | None = None
     prompt_field: str = "prompt"
     response_field: str = "response"
+    sft_eval_prompt_field: str | None = None
+    sft_eval_response_field: str | None = None
+    benchmark_prompt_field: str = "prompt"
+    benchmark_response_field: str = "response"
     anchor_field: str = "anchor"
     anchor_response_field: str = "response"
     contrastive_anchor_field: str = "anchor"
@@ -428,8 +432,8 @@ def _run_generation_evals(config: SFTConfig) -> dict[str, float]:
                 "sft",
                 config.sft_eval_source,
                 config.sft_eval_split,
-                config.prompt_field,
-                config.response_field,
+                config.sft_eval_prompt_field or config.prompt_field,
+                config.sft_eval_response_field or config.response_field,
             )
         )
     if config.benchmark_eval_source:
@@ -438,8 +442,8 @@ def _run_generation_evals(config: SFTConfig) -> dict[str, float]:
                 "benchmark",
                 config.benchmark_eval_source,
                 config.benchmark_eval_split,
-                config.prompt_field,
-                config.response_field,
+                config.benchmark_prompt_field,
+                config.benchmark_response_field,
             )
         )
     if config.anchor_eval_source:
@@ -541,6 +545,10 @@ def parse_args(argv: Sequence[str] | None = None) -> SFTConfig:
     parser.add_argument("--anchor_eval_split")
     parser.add_argument("--prompt_field", default="prompt")
     parser.add_argument("--response_field", default="response")
+    parser.add_argument("--sft_eval_prompt_field")
+    parser.add_argument("--sft_eval_response_field")
+    parser.add_argument("--benchmark_prompt_field", default="prompt")
+    parser.add_argument("--benchmark_response_field", default="response")
     parser.add_argument("--anchor_field", default="anchor")
     parser.add_argument("--anchor_response_field", default="response")
     parser.add_argument("--contrastive_anchor_field", default="anchor")

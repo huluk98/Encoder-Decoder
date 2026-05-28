@@ -32,8 +32,8 @@ def load_prompt_response_records(
     max_records: int | None = None,
 ) -> list[PromptResponseRecord]:
     """Load prompt-response records from local files, HF datasets, or HF dataset dirs."""
-    path = Path(source)
-    if path.exists():
+    path = _local_source_path(source)
+    if path is not None:
         if path.is_dir():
             rows = _load_dataset_from_disk(path, split)
         else:
@@ -62,8 +62,8 @@ def load_contrastive_records(
     max_records: int | None = None,
 ) -> list[ContrastiveRecord]:
     """Load anchor-positive-negative-response records for contrastive SFT."""
-    path = Path(source)
-    if path.exists():
+    path = _local_source_path(source)
+    if path is not None:
         if path.is_dir():
             rows = _load_dataset_from_disk(path, split)
         else:
@@ -81,6 +81,40 @@ def load_contrastive_records(
             max_records=max_records,
         )
     )
+
+
+def _local_source_path(source: str) -> Path | None:
+    path = Path(source).expanduser()
+    if path.exists():
+        return path.resolve()
+    if _looks_like_local_source(source):
+        raise FileNotFoundError(
+            f"Local dataset path does not exist: {path}. "
+            "Check the path and quote it if it contains spaces."
+        )
+    return None
+
+
+def _looks_like_local_source(source: str) -> bool:
+    path = Path(source).expanduser()
+    if path.is_absolute():
+        return True
+    if source.startswith(("~", "./", "../")):
+        return True
+    if len(path.parts) > 2:
+        return True
+    if path.suffix.lower() in {".json", ".jsonl", ".csv", ".tsv"}:
+        return True
+    first_part = path.parts[0] if path.parts else ""
+    return first_part in {
+        "data",
+        "dataset",
+        "datasets",
+        "eval",
+        "evals",
+        "benchmark",
+        "benchmarks",
+    }
 
 
 def _load_local_file(path: Path) -> list[dict[str, Any]]:

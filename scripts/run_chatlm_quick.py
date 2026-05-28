@@ -46,6 +46,10 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--precision", choices=["bf16", "fp16", "fp32"], default=DEFAULT_PRECISION)
     parser.add_argument("--prompt_field", default="prompt")
     parser.add_argument("--response_field", default="response")
+    parser.add_argument("--sft_eval_prompt_field")
+    parser.add_argument("--sft_eval_response_field")
+    parser.add_argument("--benchmark_prompt_field", default="prompt")
+    parser.add_argument("--benchmark_response_field", default="response")
     parser.add_argument("--anchor_field", default="anchor")
     parser.add_argument("--anchor_response_field", default="response")
     parser.add_argument("--contrastive_positive_field", default="positive")
@@ -184,6 +188,10 @@ def build_command(args: argparse.Namespace) -> list[str]:
 
     if args.mode == "sft":
         command.extend(["--sft_eval_source", args.sft_eval_source or args.train_source])
+        if args.sft_eval_prompt_field:
+            command.extend(["--sft_eval_prompt_field", args.sft_eval_prompt_field])
+        if args.sft_eval_response_field:
+            command.extend(["--sft_eval_response_field", args.sft_eval_response_field])
         if args.sft_eval_split:
             command.extend(["--sft_eval_split", args.sft_eval_split])
     else:
@@ -216,6 +224,8 @@ def build_command(args: argparse.Namespace) -> list[str]:
 
     if args.benchmark_source:
         command.extend(["--benchmark_eval_source", args.benchmark_source])
+        command.extend(["--benchmark_prompt_field", args.benchmark_prompt_field])
+        command.extend(["--benchmark_response_field", args.benchmark_response_field])
         if args.benchmark_eval_split:
             command.extend(["--benchmark_eval_split", args.benchmark_eval_split])
 
