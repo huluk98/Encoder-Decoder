@@ -77,3 +77,78 @@ def test_read_json_or_jsonl_supports_records_wrapper(tmp_path) -> None:
 
 def test_normalize_text_strips_trailing_textual_eos() -> None:
     assert eval_chatlm_eos.normalize_text(" answer [EOS] [EOS] ") == "answer"
+
+
+def test_evaluate_file_shards_examples_by_rank(tmp_path, monkeypatch) -> None:
+    path = tmp_path / "eval.jsonl"
+    with path.open("w", encoding="utf-8") as handle:
+        for index in range(5):
+            handle.write(json.dumps({"prompt": f"p{index}", "response": f"p{index}"}) + "\n")
+
+    def fake_generate_topk(_model, _tokenizer, prompts, **_kwargs):
+        return [[prompt] for prompt in prompts]
+
+    monkeypatch.setattr(eval_chatlm_eos, "generate_topk", fake_generate_topk)
+    predictions_path = tmp_path / "rank1.predictions.jsonl"
+
+    result = eval_chatlm_eos.evaluate_file(
+        model=None,
+        tokenizer=None,
+        file_path=path,
+        device="cpu",
+        top_k=1,
+        add_eos_to_prompt=False,
+        predictions_path=predictions_path,
+        rank=1,
+        world_size=2,
+        show_progress=False,
+    )
+
+    rows = [json.loads(line) for line in predictions_path.read_text(encoding="utf-8").splitlines()]
+    assert result["source_n"] == 5
+    assert result["n"] == 2
+    assert [row["idx"] for row in rows] == [1, 3]
+
+
+def test_merge_distributed_summaries_sums_metrics_and_predictions(tmp_path) -> None:
+    output_dir = tmp_path / "out"
+    parts_dir = output_dir / ".distributed_parts"
+    parts_dir.mkdir(parents=True)
+
+    for rank, indexes in [(0, [0, 2]), (1, [1, 3])]:
+        pred_path = eval_chatlm_eos.prediction_part_path(parts_dir, "eval", rank)
+        with pred_path.open("w", encoding="utf-8") as handle:
+            for index in indexes:
+                handle.write(json.dumps({"idx": index, "prediction": f"p{index}"}) + "\n")
+        eval_chatlm_eos.write_json(
+            eval_chatlm_eos.rank_summary_path(parts_dir, rank),
+            {
+                "model_path": "/model",
+                "distributed": {"rank": rank, "world_size": 2},
+                "eval": {
+                    "file": "/eval.json",
+                    "source_n": 4,
+                    "n": 2,
+                    "correct@1": 1,
+                    "correct@5": 2,
+                    "em@1": 0.5,
+                    "em@5": 1.0,
+                },
+            },
+        )
+
+    summary = eval_chatlm_eos.merge_distributed_summaries(
+        output_dir=output_dir,
+        parts_dir=parts_dir,
+        top_k=5,
+        world_size=2,
+    )
+
+    merged_rows = [
+        json.loads(line)
+        for line in (output_dir / "eval.predictions.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert summary["eval"]["n"] == 4
+    assert summary["eval"]["correct@1"] == 2
+    assert summary["eval"]["correct@5"] == 4
+    assert [row["idx"] for row in merged_rows] == [0, 1, 2, 3]
