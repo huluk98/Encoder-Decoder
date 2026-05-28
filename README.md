@@ -203,6 +203,13 @@ MASTER_PORT=29601 ./scripts/run_4gpu_train_eval.sh sft
 MASTER_PORT=29602 ./scripts/run_4gpu_train_eval.sh contrastive
 ```
 
+If the job is running but you do not see it by name, remember that torchrun workers often appear as `python` or `sft.py`, not as the launcher script. Check the process, port, and GPU usage with:
+
+```bash
+./scripts/check_training_process.sh
+MASTER_PORT=29601 ./scripts/check_training_process.sh
+```
+
 Run 8-GPU contrastive SFT with top-1 and top-5 exact eval:
 
 1. Edit the path block at the top of [scripts/train_contrastive_8gpu.py](scripts/train_contrastive_8gpu.py):
