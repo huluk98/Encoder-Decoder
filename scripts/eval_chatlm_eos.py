@@ -25,6 +25,33 @@ TOKENIZER_FILE_NAMES = (
     "vocab.txt",
 )
 
+# ---------------------------------------------------------------------------
+# EDIT THIS BLOCK, THEN RUN:
+#   python scripts/eval_chatlm_eos.py
+# ---------------------------------------------------------------------------
+MODEL_PATH = "/Users/luke/Documents/Encoder-Decoder/runs/chatlm-mini-8gpu-sft"
+EVAL_FILE = "/Users/luke/Documents/SCENIC agent/data/SCENIC_full_training_dataset.json"
+BENCHMARK_FILE = "/Users/luke/Documents/SCENIC agent/generated/iot_instruction_benchmark_200.json"
+OUTPUT_DIR = "/Users/luke/Documents/Encoder-Decoder/runs/eval/chatlm-eos"
+
+# Leave these as None for prompt/response files. For SCENIC anchor eval, use:
+# PROMPT_KEY = "anchor"
+# RESPONSE_KEY = "response"
+PROMPT_KEY = None
+RESPONSE_KEY = None
+BENCHMARK_PROMPT_KEY = None
+BENCHMARK_RESPONSE_KEY = None
+
+BATCH_SIZE = 8
+TOP_K = 5
+MAX_INPUT_TOKENS = 512
+MAX_NEW_TOKENS = 256
+NO_REPEAT_NGRAM_SIZE = 0
+NORMALIZATION = "strip_eos"  # raw, strip, or strip_eos
+ADD_EOS_TO_PROMPT = True
+DEVICE = None  # None uses cuda if available, otherwise cpu.
+FP16 = True
+
 
 def resolve_model_path(model_path: str | Path) -> Path:
     """
@@ -424,27 +451,31 @@ def run_chatlm_eval(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Evaluate a ChatLM/T5-style seq2seq model with [EOS] prompt handling.")
-    parser.add_argument("--model_path", required=True)
-    parser.add_argument("--eval_file", required=True)
-    parser.add_argument("--benchmark_file", default=None)
+    parser.add_argument("--model_path", default=MODEL_PATH)
+    parser.add_argument("--eval_file", default=EVAL_FILE)
+    parser.add_argument("--benchmark_file", default=BENCHMARK_FILE)
 
-    parser.add_argument("--prompt_key", default=None)
-    parser.add_argument("--response_key", default=None)
-    parser.add_argument("--benchmark_prompt_key", default=None)
-    parser.add_argument("--benchmark_response_key", default=None)
+    parser.add_argument("--prompt_key", default=PROMPT_KEY)
+    parser.add_argument("--response_key", default=RESPONSE_KEY)
+    parser.add_argument("--benchmark_prompt_key", default=BENCHMARK_PROMPT_KEY)
+    parser.add_argument("--benchmark_response_key", default=BENCHMARK_RESPONSE_KEY)
 
-    parser.add_argument("--batch_size", type=int, default=8)
-    parser.add_argument("--top_k", type=int, default=5)
-    parser.add_argument("--max_input_tokens", type=int, default=512)
-    parser.add_argument("--max_new_tokens", type=int, default=256)
-    parser.add_argument("--no_repeat_ngram_size", type=int, default=0)
+    parser.add_argument("--batch_size", type=int, default=BATCH_SIZE)
+    parser.add_argument("--top_k", type=int, default=TOP_K)
+    parser.add_argument("--max_input_tokens", type=int, default=MAX_INPUT_TOKENS)
+    parser.add_argument("--max_new_tokens", type=int, default=MAX_NEW_TOKENS)
+    parser.add_argument("--no_repeat_ngram_size", type=int, default=NO_REPEAT_NGRAM_SIZE)
 
-    parser.add_argument("--normalization", choices=["raw", "strip", "strip_eos"], default="strip_eos")
-    parser.add_argument("--no_add_eos_to_prompt", action="store_true")
+    parser.add_argument("--normalization", choices=["raw", "strip", "strip_eos"], default=NORMALIZATION)
+    parser.add_argument("--add_eos_to_prompt", dest="add_eos_to_prompt", action="store_true")
+    parser.add_argument("--no_add_eos_to_prompt", dest="add_eos_to_prompt", action="store_false")
+    parser.set_defaults(add_eos_to_prompt=ADD_EOS_TO_PROMPT)
 
-    parser.add_argument("--device", default=None)
-    parser.add_argument("--no_fp16", action="store_true")
-    parser.add_argument("--output_dir", default=None)
+    parser.add_argument("--device", default=DEVICE)
+    parser.add_argument("--fp16", dest="fp16", action="store_true")
+    parser.add_argument("--no_fp16", dest="fp16", action="store_false")
+    parser.set_defaults(fp16=FP16)
+    parser.add_argument("--output_dir", default=OUTPUT_DIR)
 
     args = parser.parse_args()
 
@@ -461,10 +492,10 @@ def main() -> int:
         max_input_tokens=args.max_input_tokens,
         max_new_tokens=args.max_new_tokens,
         normalization=args.normalization,
-        add_eos_to_prompt=not args.no_add_eos_to_prompt,
+        add_eos_to_prompt=args.add_eos_to_prompt,
         no_repeat_ngram_size=args.no_repeat_ngram_size,
         device=args.device,
-        fp16=not args.no_fp16,
+        fp16=args.fp16,
         output_dir=args.output_dir,
     )
 

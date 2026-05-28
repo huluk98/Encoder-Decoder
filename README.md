@@ -347,6 +347,23 @@ The wrapper writes `eval_metrics.json`, `benchmark_metrics.json`, prediction JSO
 
 Alternative ChatLM/T5-style evaluator with textual `[EOS]` prompt handling:
 
+Edit the path block at the top of [scripts/eval_chatlm_eos.py](scripts/eval_chatlm_eos.py), then run it directly:
+
+```bash
+python scripts/eval_chatlm_eos.py
+```
+
+The defaults in that file are:
+
+```python
+MODEL_PATH = "/Users/luke/Documents/Encoder-Decoder/runs/chatlm-mini-8gpu-sft"
+EVAL_FILE = "/Users/luke/Documents/SCENIC agent/data/SCENIC_full_training_dataset.json"
+BENCHMARK_FILE = "/Users/luke/Documents/SCENIC agent/generated/iot_instruction_benchmark_200.json"
+OUTPUT_DIR = "/Users/luke/Documents/Encoder-Decoder/runs/eval/chatlm-eos"
+```
+
+You can still override any path from the command line:
+
 ```bash
 python scripts/eval_chatlm_eos.py \
   --model_path "/absolute/path/to/ChatLM-mini-Chinese-or-checkpoint" \
