@@ -185,6 +185,13 @@ EPOCHS=1 \
 ./scripts/run_4gpu_train_eval.sh sft
 ```
 
+If you see `EADDRINUSE` or `address already in use` for port `29500`, another distributed job is already using torchrun's default port. The launcher defaults to `MASTER_PORT=29573`; choose another free port if needed:
+
+```bash
+MASTER_PORT=29601 ./scripts/run_4gpu_train_eval.sh sft
+MASTER_PORT=29602 ./scripts/run_4gpu_train_eval.sh contrastive
+```
+
 Run 8-GPU contrastive SFT with top-1 and top-5 exact eval:
 
 1. Edit the path block at the top of [scripts/train_contrastive_8gpu.py](scripts/train_contrastive_8gpu.py):

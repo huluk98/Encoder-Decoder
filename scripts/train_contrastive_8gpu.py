@@ -43,6 +43,7 @@ PRECISION = "bf16"  # bf16, fp16, or fp32
 
 NPROC_PER_NODE = 8
 CUDA_VISIBLE_DEVICES = "0,1,2,3,4,5,6,7"
+MASTER_PORT = "29573"
 NUM_TRAIN_EPOCHS = 3.0
 LEARNING_RATE = 5e-5
 PER_DEVICE_TRAIN_BATCH_SIZE = 1
@@ -84,6 +85,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--model_family", choices=["auto", "causal", "seq2seq"], default=MODEL_FAMILY)
     parser.add_argument("--precision", choices=["bf16", "fp16", "fp32"], default=PRECISION)
     parser.add_argument("--nproc_per_node", type=int, default=NPROC_PER_NODE)
+    parser.add_argument("--master_port", default=MASTER_PORT)
     parser.add_argument("--epochs", "--num_train_epochs", type=float, default=NUM_TRAIN_EPOCHS)
     parser.add_argument("--learning_rate", type=float, default=LEARNING_RATE)
     parser.add_argument("--per_device_train_batch_size", type=int, default=PER_DEVICE_TRAIN_BATCH_SIZE)
@@ -112,6 +114,8 @@ def build_train_command(args: argparse.Namespace) -> list[str]:
         "torch.distributed.run",
         "--nproc_per_node",
         str(args.nproc_per_node),
+        "--master_port",
+        str(args.master_port),
         str(script_path("sft.py")),
         "--model_name_or_path",
         args.model_path,
