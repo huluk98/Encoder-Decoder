@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from encoder_decoder.modeling import (
@@ -8,6 +10,7 @@ from encoder_decoder.modeling import (
     missing_custom_code_files,
     resolve_model_name_or_path,
     resolve_tokenizer_name_or_path,
+    save_tokenizer_pretrained_safely,
 )
 
 
@@ -84,3 +87,36 @@ def test_copy_custom_code_files_copies_remote_code_siblings(tmp_path) -> None:
     assert missing == []
     assert (output_dir / "modeling_chat_model.py").read_text(encoding="utf-8") == "# model\n"
     assert (output_dir / "configuration_chat_model.py").read_text(encoding="utf-8") == "# config\n"
+
+
+def test_save_tokenizer_pretrained_safely_sanitizes_dtype_metadata(tmp_path) -> None:
+    fake_dtype = type("dtype", (), {"__module__": "torch", "__str__": lambda self: "torch.float16"})()
+
+    class FakeTokenizer:
+        def __init__(self) -> None:
+            self.init_kwargs = {
+                "torch_dtype": fake_dtype,
+                "nested": {"dtype": fake_dtype},
+                "path": tmp_path / "base-tokenizer",
+            }
+            self.init_inputs = (fake_dtype,)
+            self.name_or_path = tmp_path / "base-tokenizer"
+
+        def save_pretrained(self, output_dir):
+            json.dumps(
+                {
+                    "init_kwargs": self.init_kwargs,
+                    "init_inputs": self.init_inputs,
+                    "name_or_path": self.name_or_path,
+                }
+            )
+            return (str(output_dir),)
+
+    tokenizer = FakeTokenizer()
+
+    assert save_tokenizer_pretrained_safely(tokenizer, tmp_path / "out") == (str(tmp_path / "out"),)
+    assert tokenizer.init_kwargs["torch_dtype"] == "float16"
+    assert tokenizer.init_kwargs["nested"]["dtype"] == "float16"
+    assert tokenizer.init_kwargs["path"] == str(tmp_path / "base-tokenizer")
+    assert tokenizer.init_inputs == ["float16"]
+    assert tokenizer.name_or_path == str(tmp_path / "base-tokenizer")

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import shutil
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Literal
 
@@ -98,6 +99,24 @@ def missing_custom_code_files(model_dir: str | Path) -> list[str]:
     ]
 
 
+def save_tokenizer_pretrained_safely(tokenizer, output_dir: str | Path):
+    """Save a tokenizer after making its save config JSON-serializable."""
+    sanitize_tokenizer_for_save(tokenizer)
+    return tokenizer.save_pretrained(output_dir)
+
+
+def sanitize_tokenizer_for_save(tokenizer):
+    """Remove non-JSON Python objects from tokenizer metadata before saving."""
+    for attr in ("init_kwargs", "init_inputs"):
+        if hasattr(tokenizer, attr):
+            setattr(tokenizer, attr, _json_safe_tokenizer_value(getattr(tokenizer, attr)))
+
+    name_or_path = getattr(tokenizer, "name_or_path", None)
+    if name_or_path is not None and not isinstance(name_or_path, str):
+        tokenizer.name_or_path = str(name_or_path)
+    return tokenizer
+
+
 def resolve_model_name_or_path(model_name_or_path: str) -> str:
     """Return an absolute local model path or a Hugging Face repo id.
 
@@ -167,6 +186,49 @@ def _latest_checkpoint_with_config(path: Path) -> Path | None:
 
 def _has_tokenizer_files(path: Path) -> bool:
     return any((path / name).exists() for name in TOKENIZER_FILE_NAMES)
+
+
+def _json_safe_tokenizer_value(value):
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+
+    torch_dtype_name = _torch_dtype_name(value)
+    if torch_dtype_name is not None:
+        return torch_dtype_name
+
+    if isinstance(value, Path):
+        return str(value)
+
+    if isinstance(value, Mapping):
+        return {
+            _json_safe_tokenizer_key(key): _json_safe_tokenizer_value(item)
+            for key, item in value.items()
+        }
+
+    if isinstance(value, (list, tuple)):
+        return [_json_safe_tokenizer_value(item) for item in value]
+
+    if isinstance(value, set):
+        return [_json_safe_tokenizer_value(item) for item in sorted(value, key=str)]
+
+    try:
+        json.dumps(value)
+    except TypeError:
+        return str(value)
+    return value
+
+
+def _json_safe_tokenizer_key(value):
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    return str(value)
+
+
+def _torch_dtype_name(value) -> str | None:
+    value_type = type(value)
+    if value_type.__module__ == "torch" and value_type.__name__ == "dtype":
+        return str(value).removeprefix("torch.")
+    return None
 
 
 def _looks_like_local_path(value: str) -> bool:
