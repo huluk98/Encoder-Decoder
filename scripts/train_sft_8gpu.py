@@ -70,6 +70,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--benchmark_response_field", default=BENCHMARK_RESPONSE_FIELD)
     parser.add_argument("--model_family", choices=["auto", "causal", "seq2seq"], default=MODEL_FAMILY)
     parser.add_argument("--precision", choices=["bf16", "fp16", "fp32"], default=PRECISION)
+    parser.add_argument("--cuda_visible_devices")
     parser.add_argument("--nproc_per_node", type=int, default=NPROC_PER_NODE)
     parser.add_argument("--master_port", default=MASTER_PORT)
     parser.add_argument("--epochs", "--num_train_epochs", type=float, default=NUM_TRAIN_EPOCHS)
@@ -240,14 +241,33 @@ def missing_dependencies() -> list[str]:
     return [module for module in REQUIRED_MODULES if importlib.util.find_spec(module) is None]
 
 
-def runtime_env() -> dict[str, str]:
+def runtime_env(args: argparse.Namespace | None = None) -> dict[str, str]:
     env = os.environ.copy()
-    env.setdefault("CUDA_VISIBLE_DEVICES", CUDA_VISIBLE_DEVICES)
+    visible_devices = (
+        args.cuda_visible_devices
+        if args is not None and args.cuda_visible_devices is not None
+        else env.get("CUDA_VISIBLE_DEVICES", CUDA_VISIBLE_DEVICES)
+    )
+    env["CUDA_VISIBLE_DEVICES"] = visible_devices
     env.setdefault("TOKENIZERS_PARALLELISM", "false")
     env.setdefault("NCCL_DEBUG", "WARN")
     env.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
     env.setdefault("OMP_NUM_THREADS", "8")
     return env
+
+
+def validate_distributed_gpu_config(args: argparse.Namespace, env: dict[str, str]) -> None:
+    visible_count = visible_device_count(env.get("CUDA_VISIBLE_DEVICES", ""))
+    if visible_count and args.nproc_per_node > visible_count:
+        raise ValueError(
+            f"nproc_per_node={args.nproc_per_node} but CUDA_VISIBLE_DEVICES exposes "
+            f"only {visible_count} GPU(s): {env['CUDA_VISIBLE_DEVICES']}. "
+            "Set --nproc_per_node to the number of visible GPUs."
+        )
+
+
+def visible_device_count(value: str) -> int:
+    return len([item for item in value.split(",") if item.strip()])
 
 
 def run(command: Sequence[str], *, env: dict[str, str], capture_json: bool = False):
@@ -309,7 +329,12 @@ def summary_metrics_filename(top_k: int) -> str:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
-    env = runtime_env()
+    env = runtime_env(args)
+    try:
+        validate_distributed_gpu_config(args, env)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
     commands: list[Sequence[str]] = []
     if not args.skip_train:
         commands.append(build_train_command(args))
@@ -317,6 +342,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         commands.extend(command for _name, command in build_eval_commands(args))
 
     if args.dry_run:
+        print(f"CUDA_VISIBLE_DEVICES={env['CUDA_VISIBLE_DEVICES']}")
         for command in commands:
             print(" ".join(shlex.quote(part) for part in command))
         return 0

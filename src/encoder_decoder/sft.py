@@ -203,8 +203,8 @@ def train_sft(config: SFTConfig) -> dict[str, float]:
         )
     trainer = trainer_class(**trainer_kwargs)
     train_result = trainer.train(resume_from_checkpoint=config.resume_from_checkpoint)
-    trainer.save_model(config.output_dir)
     if trainer.is_world_process_zero():
+        trainer.save_model(config.output_dir)
         save_tokenizer_pretrained_safely(tokenizer, config.output_dir)
         copy_custom_code_files(
             config.output_dir,
@@ -212,7 +212,8 @@ def train_sft(config: SFTConfig) -> dict[str, float]:
             source_paths=[config.model_name_or_path, getattr(model.config, "_name_or_path", None)],
             objects=[model, model.config, tokenizer],
         )
-    trainer.save_state()
+        trainer.save_state()
+    _trainer_wait_for_everyone(trainer)
 
     metrics = dict(train_result.metrics)
     if trainer.is_world_process_zero():
@@ -505,6 +506,20 @@ def _run_generation_evals(config: SFTConfig) -> dict[str, float]:
     with (prediction_dir / "metrics.json").open("w", encoding="utf-8") as handle:
         json.dump(metrics, handle, indent=2, sort_keys=True)
     return metrics
+
+
+def _trainer_wait_for_everyone(trainer) -> None:
+    accelerator = getattr(trainer, "accelerator", None)
+    if accelerator is not None:
+        accelerator.wait_for_everyone()
+        return
+
+    try:
+        import torch.distributed as dist
+    except ImportError:
+        return
+    if dist.is_available() and dist.is_initialized():
+        dist.barrier()
 
 
 def _build_training_args(config: SFTConfig, *, eval_enabled: bool):

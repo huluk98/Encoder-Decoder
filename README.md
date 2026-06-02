@@ -150,6 +150,7 @@ For contrastive SFT plus eval on physical GPUs `4,5,6,7`:
 CUDA_VISIBLE_DEVICES=4,5,6,7 conda run -n DPO \
   python scripts/train_contrastive_8gpu.py \
   --nproc_per_node 4 \
+  --cuda_visible_devices 4,5,6,7 \
   --model_path charent/ChatLM-mini-Chinese \
   --contrastive_train_source "/Users/luke/Documents/SCENIC agent/data/SCENIC_full_anchor_positive_negative.json" \
   --sft_train_eval_source data/sft.jsonl \
@@ -160,7 +161,7 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 conda run -n DPO \
   --precision bf16
 ```
 
-When `CUDA_VISIBLE_DEVICES=4,5,6,7` is set, those physical GPUs are exposed to the process as local CUDA devices `0,1,2,3`. Use `--nproc_per_node 4`, not `8`, when exposing four GPUs.
+When `CUDA_VISIBLE_DEVICES=4,5,6,7` is set, those physical GPUs are exposed to the process as local CUDA devices `0,1,2,3`. Use `--nproc_per_node 4`, not `8`, when exposing four GPUs. The Python launchers now validate this before starting `torchrun`, so a four-GPU visible list with eight workers fails immediately instead of launching a broken distributed job.
 
 You can also run the same 4-GPU commands from a shell launcher instead of typing the full CLI:
 
@@ -176,7 +177,7 @@ Preview the generated commands without launching training:
 DRY_RUN=1 ./scripts/run_4gpu_train_eval.sh both
 ```
 
-The launcher uses `CUDA_VISIBLE_DEVICES=4,5,6,7`, `NPROC_PER_NODE=4`, and the `DPO` conda environment by default. Change file paths and JSON paths in the `EDIT THIS BLOCK` section at the top of [scripts/run_4gpu_train_eval.sh](scripts/run_4gpu_train_eval.sh):
+The launcher passes `CUDA_VISIBLE_DEVICES=4,5,6,7`, `NPROC_PER_NODE=4`, and the `DPO` conda environment by default. Change file paths and JSON paths in the `EDIT THIS BLOCK` section at the top of [scripts/run_4gpu_train_eval.sh](scripts/run_4gpu_train_eval.sh):
 
 ```bash
 DEFAULT_TRAIN_SOURCE="data/sft.jsonl"

@@ -78,6 +78,7 @@ run_sft() {
   conda run -n "${ENV_NAME}" \
     python "${REPO_ROOT}/scripts/train_sft_8gpu.py" \
     --nproc_per_node "${NPROC_PER_NODE}" \
+    --cuda_visible_devices "${CUDA_VISIBLE_DEVICES}" \
     --master_port "${MASTER_PORT}" \
     --model_path "${MODEL_PATH}" \
     --train_source "${TRAIN_SOURCE}" \
@@ -93,6 +94,7 @@ run_contrastive() {
   conda run -n "${ENV_NAME}" \
     python "${REPO_ROOT}/scripts/train_contrastive_8gpu.py" \
     --nproc_per_node "${NPROC_PER_NODE}" \
+    --cuda_visible_devices "${CUDA_VISIBLE_DEVICES}" \
     --master_port "${MASTER_PORT}" \
     --model_path "${MODEL_PATH}" \
     --contrastive_train_source "${CONTRASTIVE_TRAIN_SOURCE}" \

@@ -3,6 +3,8 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
+import pytest
+
 
 def load_script(name: str):
     script_path = Path(__file__).resolve().parents[1] / "scripts" / name
@@ -63,3 +65,42 @@ def test_distributed_training_scripts_forward_master_port() -> None:
         option_value(contrastive.build_train_command(contrastive_args), "--master_port")
         == "29602"
     )
+
+
+@pytest.mark.parametrize("script_name", ["train_sft_8gpu.py", "train_contrastive_8gpu.py"])
+def test_distributed_training_scripts_use_visible_devices_from_env(
+    monkeypatch,
+    script_name: str,
+) -> None:
+    script = load_script(script_name)
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "4,5,6,7")
+    args = script.parse_args(["--nproc_per_node", "4"])
+
+    env = script.runtime_env(args)
+
+    assert env["CUDA_VISIBLE_DEVICES"] == "4,5,6,7"
+    script.validate_distributed_gpu_config(args, env)
+
+
+@pytest.mark.parametrize("script_name", ["train_sft_8gpu.py", "train_contrastive_8gpu.py"])
+def test_distributed_training_scripts_reject_too_many_processes(
+    monkeypatch,
+    script_name: str,
+) -> None:
+    script = load_script(script_name)
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "4,5,6,7")
+    args = script.parse_args(["--nproc_per_node", "8"])
+    env = script.runtime_env(args)
+
+    with pytest.raises(ValueError, match="nproc_per_node=8"):
+        script.validate_distributed_gpu_config(args, env)
+
+
+@pytest.mark.parametrize("script_name", ["train_sft_8gpu.py", "train_contrastive_8gpu.py"])
+def test_distributed_training_scripts_allow_explicit_visible_devices(script_name: str) -> None:
+    script = load_script(script_name)
+    args = script.parse_args(["--cuda_visible_devices", "5,6", "--nproc_per_node", "2"])
+    env = script.runtime_env(args)
+
+    assert env["CUDA_VISIBLE_DEVICES"] == "5,6"
+    script.validate_distributed_gpu_config(args, env)
