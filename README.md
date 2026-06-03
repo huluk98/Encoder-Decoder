@@ -623,6 +623,36 @@ method    split       top1_exact    exact@5    total
 
 Full outputs are saved under `runs/pruning_eval/sft/METHOD/` and `runs/pruning_eval/contrastive/METHOD/`, including pruned models, prediction JSONL files, `eval_metrics.json`, and `benchmark_metrics.json`.
 
+Check active/nonzero parameters by full model scope:
+
+```bash
+# Auto-detect saved checkpoints under prune_eval_outputs/, runs/, models/, outputs/, and output/.
+ENV_NAME=DPO ./scripts/check_model_active_params.sh
+
+# Or inspect one model explicitly.
+ENV_NAME=DPO ./scripts/check_model_active_params.sh \
+  prune_eval_outputs/ChatLM-mini-Chinese_sft_contrastive5_all50_20260603T071623Z/contrastive_sft/gradient_50/pruned_model
+```
+
+The active-parameter checker prints `all_params`, `all_linear_weights`, `encoder_linear_weights`, `decoder_linear_weights`, `lm_head_linear_weights`, `non_linear_params`, embeddings, norms, and biases. Use it to verify whether a checkpoint is truly 50% sparse across the whole model or only 50% sparse inside a targeted pruning scope:
+
+```bash
+OUTPUT_JSON=runs/active_param_scope.json \
+ENV_NAME=DPO \
+./scripts/check_model_active_params.sh
+```
+
+Useful overrides:
+
+```bash
+SEARCH_ROOTS="prune_eval_outputs runs/my_experiment" \
+MAX_DEPTH=10 \
+TRUST_REMOTE_CODE=1 \
+MODEL_FAMILY=seq2seq \
+ENV_NAME=DPO \
+./scripts/check_model_active_params.sh
+```
+
 ## Local Scripts
 
 The package commands are also available as direct scripts:
