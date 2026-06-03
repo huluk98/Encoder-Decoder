@@ -4,6 +4,7 @@ import pytest
 
 from encoder_decoder.data import PromptResponseRecord
 from encoder_decoder.pruning import (
+    gradient_prune_model,
     magnitude_prune_model,
     nvidia_nm_prune_model,
     summarize_linear_sparsity,
@@ -26,6 +27,16 @@ def test_magnitude_pruning_zeros_lowest_weights() -> None:
     assert report.zeros == 2
     assert report.total == 4
     assert report.sparsity == 0.5
+
+
+def test_magnitude_pruning_keeps_threshold_ties() -> None:
+    model = nn.Sequential(nn.Linear(4, 1, bias=False))
+    with torch.no_grad():
+        model[0].weight.fill_(1.0)
+
+    magnitude_prune_model(model, sparsity=0.5)
+
+    assert torch.count_nonzero(model[0].weight).item() == 4
 
 
 def test_nvidia_two_of_four_kept_per_group() -> None:
@@ -80,6 +91,36 @@ class TinyCausalModel(nn.Module):
         hidden = self.embed(input_ids)
         logits = self.linear(hidden)
         return type("Output", (), {"logits": logits, "loss": None})()
+
+
+class ZeroGradientModel(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.config = type("Config", (), {"use_cache": True})()
+        self.linear = nn.Linear(4, 1, bias=False)
+
+    def forward(self, input_ids, attention_mask=None, labels=None, **_kwargs):
+        loss = self.linear.weight.sum() * 0.0
+        return type("Output", (), {"loss": loss})()
+
+
+def test_gradient_pruning_keeps_zero_saliency_layers() -> None:
+    model = ZeroGradientModel()
+    with torch.no_grad():
+        model.linear.weight.copy_(torch.tensor([[1.0, 2.0, 3.0, 4.0]]))
+
+    gradient_prune_model(
+        model,
+        TinyTokenizer(),
+        [PromptResponseRecord(prompt="turn on lamp", response="ok")],
+        resolved_family="causal",
+        sparsity=0.5,
+        device=torch.device("cpu"),
+        max_seq_length=16,
+        target_max_length=4,
+    )
+
+    assert model.linear.weight.tolist() == [[1.0, 2.0, 3.0, 4.0]]
 
 
 def test_wanda_pruning_reaches_rowwise_half_sparsity() -> None:

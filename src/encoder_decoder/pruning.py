@@ -571,15 +571,13 @@ def _lowest_score_mask(score, sparsity: float):
     import torch
 
     flat_score = score.reshape(-1)
-    prune_count = int(flat_score.numel() * sparsity)
-    mask = torch.ones(flat_score.numel(), dtype=torch.bool, device=flat_score.device)
-    if prune_count <= 0:
-        return mask.view_as(score)
-    if prune_count >= flat_score.numel():
+    keep_count = int(flat_score.numel() * (1.0 - sparsity))
+    if keep_count <= 0:
         return torch.zeros_like(score, dtype=torch.bool)
-    prune_idx = torch.topk(flat_score, prune_count, largest=False, sorted=False).indices
-    mask[prune_idx] = False
-    return mask.view_as(score)
+    if keep_count >= flat_score.numel():
+        return torch.ones_like(score, dtype=torch.bool)
+    threshold = torch.topk(flat_score, keep_count).values.min()
+    return score >= threshold
 
 
 def _rowwise_lowest_score_mask(score, sparsity: float):
