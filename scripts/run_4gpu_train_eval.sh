@@ -33,7 +33,7 @@ DEFAULT_BENCHMARK_SOURCE="data/benchmark.jsonl"
 DEFAULT_SFT_OUTPUT_DIR="runs/chatlm-mini-4gpu-sft"
 
 # Contrastive SFT paths.
-DEFAULT_CONTRASTIVE_TRAIN_SOURCE="/Users/luke/Documents/SCENIC agent/data/SCENIC_full_anchor_positive_negative.json"
+DEFAULT_CONTRASTIVE_TRAIN_SOURCE="data/SCENIC_full_anchor_positive_negative.json"
 DEFAULT_SFT_TRAIN_EVAL_SOURCE="data/sft.jsonl"
 DEFAULT_CONTRASTIVE_BENCHMARK_SOURCE="${DEFAULT_BENCHMARK_SOURCE}"
 DEFAULT_CONTRASTIVE_OUTPUT_DIR="runs/chatlm-mini-4gpu-contrastive"

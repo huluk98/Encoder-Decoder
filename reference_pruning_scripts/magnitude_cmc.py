@@ -2,8 +2,8 @@ import torch
 import torch.nn as nn
 from transformers import T5ForConditionalGeneration, AutoTokenizer
 
-MODEL_PATH = "/nvme1/home/luke/PycharmProjects/iot_t5/sft"   # e.g. "./chatlm-mini"
-SAVE_PATH = "/nvme1/home/luke/PycharmProjects/t5prune/pruned_models/magnitudenew"
+MODEL_PATH = "models/sft"   # e.g. "./chatlm-mini"
+SAVE_PATH = "pruned_models/magnitudenew"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 SPARSITY = 0.5
 

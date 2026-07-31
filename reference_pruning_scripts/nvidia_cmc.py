@@ -3,7 +3,7 @@ import torch.nn as nn
 from transformers import T5ForConditionalGeneration, AutoTokenizer
 
 MODEL_PATH = "charent/ChatLM-mini-Chinese"   # e.g. "./chatlm-mini"
-SAVE_PATH = "/nvme1/home/luke/PycharmProjects/t5prune/pruned_models/nvidiabase"
+SAVE_PATH = "pruned_models/nvidiabase"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 

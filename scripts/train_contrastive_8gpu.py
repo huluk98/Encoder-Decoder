@@ -17,7 +17,7 @@ from typing import Sequence
 MODEL_NAME_OR_PATH = "charent/ChatLM-mini-Chinese"
 
 # Contrastive training data must contain anchor/positive/negative/response fields.
-CONTRASTIVE_TRAIN_SOURCE = "/Users/luke/Documents/SCENIC agent/data/SCENIC_full_anchor_positive_negative.json"
+CONTRASTIVE_TRAIN_SOURCE = "data/SCENIC_full_anchor_positive_negative.json"
 
 # Eval the contrastive-trained model on the regular SFT training data and benchmark.
 SFT_TRAIN_EVAL_SOURCE = "data/sft.jsonl"

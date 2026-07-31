@@ -4,9 +4,9 @@ import json
 from transformers import T5ForConditionalGeneration, AutoTokenizer
 from torch.utils.data import Dataset, DataLoader
 
-MODEL_PATH = "/nvme1/home/luke/PycharmProjects/iot_t5/sft"   # e.g. "./chatlm-mini"
-DATA_PATH = "/nvme1/home/luke/PycharmProjects/t5prune/data/dataset.json"
-SAVE_PATH = "/nvme1/home/luke/PycharmProjects/t5prune/pruned_models/wanda"
+MODEL_PATH = "models/sft"   # e.g. "./chatlm-mini"
+DATA_PATH = "data/dataset.json"
+SAVE_PATH = "pruned_models/wanda"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 SPARSITY = 0.5
 CALIB_BATCHES = 64

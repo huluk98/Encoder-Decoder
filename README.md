@@ -152,7 +152,7 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 conda run -n DPO \
   --nproc_per_node 4 \
   --cuda_visible_devices 4,5,6,7 \
   --model_path charent/ChatLM-mini-Chinese \
-  --contrastive_train_source "/Users/luke/Documents/SCENIC agent/data/SCENIC_full_anchor_positive_negative.json" \
+  --contrastive_train_source "data/SCENIC_full_anchor_positive_negative.json" \
   --sft_train_eval_source data/sft.jsonl \
   --benchmark_source data/benchmark.jsonl \
   --output_dir runs/chatlm-mini-4gpu-contrastive \
@@ -183,7 +183,7 @@ The launcher passes `CUDA_VISIBLE_DEVICES=4,5,6,7`, `NPROC_PER_NODE=4`, and the 
 DEFAULT_TRAIN_SOURCE="data/sft.jsonl"
 DEFAULT_TRAIN_EVAL_SOURCE="${DEFAULT_TRAIN_SOURCE}"
 DEFAULT_BENCHMARK_SOURCE="data/benchmark.jsonl"
-DEFAULT_CONTRASTIVE_TRAIN_SOURCE="/Users/luke/Documents/SCENIC agent/data/SCENIC_full_anchor_positive_negative.json"
+DEFAULT_CONTRASTIVE_TRAIN_SOURCE="data/SCENIC_full_anchor_positive_negative.json"
 DEFAULT_SFT_TRAIN_EVAL_SOURCE="data/sft.jsonl"
 DEFAULT_CONTRASTIVE_BENCHMARK_SOURCE="${DEFAULT_BENCHMARK_SOURCE}"
 ```
@@ -217,7 +217,7 @@ Run 8-GPU contrastive SFT with top-1 and top-5 exact eval:
 
 ```python
 MODEL_NAME_OR_PATH = "charent/ChatLM-mini-Chinese"
-CONTRASTIVE_TRAIN_SOURCE = "/Users/luke/Documents/SCENIC agent/data/SCENIC_full_anchor_positive_negative.json"
+CONTRASTIVE_TRAIN_SOURCE = "data/SCENIC_full_anchor_positive_negative.json"
 SFT_TRAIN_EVAL_SOURCE = "data/sft.jsonl"
 BENCHMARK_SOURCE = "data/benchmark.jsonl"
 OUTPUT_DIR = "runs/chatlm-mini-8gpu-contrastive"
@@ -415,7 +415,7 @@ If your eval file uses SCENIC anchor fields while the benchmark uses prompt fiel
 ```bash
 python scripts/eval_model_and_benchmark.py \
   --model_path runs/chatlm-mini-8gpu-contrastive \
-  --eval_source "/Users/luke/Documents/SCENIC agent/data/SCENIC_full_anchor_positive_negative.json" \
+  --eval_source "data/SCENIC_full_anchor_positive_negative.json" \
   --eval_prompt_field anchor \
   --eval_response_field response \
   --benchmark_source data/benchmark.jsonl \
@@ -440,11 +440,11 @@ python scripts/eval_chatlm_eos.py
 The defaults in that file are:
 
 ```python
-MODEL_PATH = "/Users/luke/Documents/Encoder-Decoder/runs/chatlm-mini-8gpu-sft"
+MODEL_PATH = "runs/chatlm-mini-8gpu-sft"
 BASE_MODEL_PATH = "charent/ChatLM-mini-Chinese"
-EVAL_FILE = "/Users/luke/Documents/SCENIC agent/data/SCENIC_full_training_dataset.json"
-BENCHMARK_FILE = "/Users/luke/Documents/SCENIC agent/generated/iot_instruction_benchmark_200.json"
-OUTPUT_DIR = "/Users/luke/Documents/Encoder-Decoder/runs/eval/chatlm-eos"
+EVAL_FILE = "data/SCENIC_full_training_dataset.json"
+BENCHMARK_FILE = "generated/iot_instruction_benchmark_200.json"
+OUTPUT_DIR = "runs/eval/chatlm-eos"
 USE_8_GPUS = True
 CUDA_VISIBLE_DEVICES = "4,5,6,7"
 NPROC_PER_NODE = 4
@@ -483,7 +483,7 @@ For SCENIC anchor eval plus a normal prompt/response benchmark:
 ```bash
 python scripts/eval_chatlm_eos.py \
   --model_path "/absolute/path/to/model_or_checkpoint" \
-  --eval_file "/Users/luke/Documents/SCENIC agent/data/SCENIC_full_anchor_positive_negative.json" \
+  --eval_file "data/SCENIC_full_anchor_positive_negative.json" \
   --prompt_key anchor \
   --response_key response \
   --benchmark_file "/absolute/path/to/benchmark.json" \
@@ -577,7 +577,7 @@ Run the same four methods after contrastive SFT, calibrating WANDA/gradient on t
 
 ```bash
 MODEL_PATH=runs/chatlm-mini-8gpu-contrastive \
-CALIBRATION_SOURCE="/Users/luke/Documents/SCENIC agent/data/SCENIC_full_anchor_positive_negative.json" \
+CALIBRATION_SOURCE="data/SCENIC_full_anchor_positive_negative.json" \
 CALIBRATION_PROMPT_FIELD=anchor \
 CALIBRATION_RESPONSE_FIELD=response \
 EVAL_SOURCE=data/sft.jsonl \

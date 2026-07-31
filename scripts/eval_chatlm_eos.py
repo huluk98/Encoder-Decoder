@@ -43,11 +43,11 @@ TOKENIZER_FILE_NAMES = (
 # EDIT THIS BLOCK, THEN RUN:
 #   python scripts/eval_chatlm_eos.py
 # ---------------------------------------------------------------------------
-MODEL_PATH = "/Users/luke/Documents/Encoder-Decoder/runs/chatlm-mini-8gpu-sft"
+MODEL_PATH = "runs/chatlm-mini-8gpu-sft"
 BASE_MODEL_PATH = "charent/ChatLM-mini-Chinese"
-EVAL_FILE = "/Users/luke/Documents/SCENIC agent/data/SCENIC_full_training_dataset.json"
-BENCHMARK_FILE = "/Users/luke/Documents/SCENIC agent/generated/iot_instruction_benchmark_200.json"
-OUTPUT_DIR = "/Users/luke/Documents/Encoder-Decoder/runs/eval/chatlm-eos"
+EVAL_FILE = "data/SCENIC_full_training_dataset.json"
+BENCHMARK_FILE = "generated/iot_instruction_benchmark_200.json"
+OUTPUT_DIR = "runs/eval/chatlm-eos"
 
 # Leave these as None for prompt/response files. For SCENIC anchor eval, use:
 # PROMPT_KEY = "anchor"
